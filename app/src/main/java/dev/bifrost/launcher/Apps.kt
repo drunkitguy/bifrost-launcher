@@ -8,7 +8,7 @@ import android.content.pm.ApplicationInfo
 import android.graphics.drawable.Drawable
 
 internal object Apps {
-    class Entry(val label: String, val component: ComponentName, val icon: Drawable, val game: Boolean)
+    class Entry(override val label: String, val component: ComponentName, val icon: Drawable, val game: Boolean) : Tile
 
     /** Games first, then everything else, alphabetical. Only touched on the main thread. */
     var list: List<Entry> = emptyList()

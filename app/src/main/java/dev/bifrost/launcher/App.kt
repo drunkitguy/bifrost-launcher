@@ -14,6 +14,7 @@ class App : Application() {
         super.onCreate()
         prefs = getSharedPreferences("bifrost", MODE_PRIVATE)
         Apps.reload(this)
+        Library.init(this)
         Dock.init(this)
         val packages = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)

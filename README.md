@@ -1,11 +1,46 @@
 # Bifrost Launcher
 
-A dual-screen, dock-aware home screen for the AYN Thor.
+A dual-screen, dock-aware game frontend and home screen for the AYN Thor.
 
 | Mode | Top screen | Bottom screen | External display |
 |------|-----------|---------------|------------------|
-| Handheld | App grid (controller or touch) | Clock, date, battery, network, storage, controllers, quick actions | n/a |
-| Docked | Off | Off | Everything: clock, status, app grid, quick actions |
+| Handheld | Box art of the selected console's games | Consoles (GameCube, Wii, 3DS, ...), Android apps, clock and status | n/a |
+| Docked | Off | Off | Everything: consoles, games, clock, status |
+
+## Game library
+
+1. Open **Bifrost settings** and choose your ROMs folder.
+2. Put each console's games in a subfolder named like ES-DE (`gc`, `wii`, `n3ds`, `switch`, `ps2`,
+   `psx`, `psp`, `nds`, `n64`, `dreamcast`, `gba`, `snes`, ...) or by full name
+   (`Nintendo GameCube`). An existing ES-DE ROMs folder works as is.
+3. Consoles with games show up on the bottom screen. Pick one and its games fill the top screen.
+
+Every system and emulator ES-DE supports on Android works (about 190 systems), including Dolphin,
+Azahar, Eden, NetherSX2, DuckStation, PPSSPP, melonDS, Vita3K, Flycast and RetroArch cores.
+Bifrost lends the emulator read access to the game when it starts it, so most standalone
+emulators need no folder setup of their own.
+
+### Launchers
+
+- **Long-press a console** (or press X/Y on it): choose its default emulator.
+- **Long-press a game**: "Launch with..." picks an emulator for that game only.
+- Default: the first installed standalone emulator, else RetroArch.
+- **Custom launchers**: put `bifrost_systems.xml` and `bifrost_find_rules.xml` in the ROMs folder,
+  in [ES-DE's format](https://gitlab.com/es-de/emulationstation-de/-/tree/master/resources/systems/android).
+  Entries there add to or replace the built-in ones, then Rescan. `%EMULATOR_com.app/.Activity%`
+  works too, without a find rule.
+
+### Artwork
+
+- **Download missing artwork** in settings fetches box art for every game from the
+  [libretro thumbnail server](https://thumbnails.libretro.com) (no account needed).
+- Long-press a game for **Download artwork**, **Set artwork...** (any image) or **Remove artwork**.
+- Long-press a console to give it its own artwork.
+- Switch and other systems without libretro thumbnails need custom artwork.
+
+### Controller
+
+- **A**: open, **X / Y**: menu, **L1 / R1**: previous / next console, **Start**: settings
 
 ## Docked mode
 
@@ -26,17 +61,15 @@ the panels off for real (`SurfaceControl.setDisplayPowerMode`, run through `app_
 stock Thor no setup is needed: it uses AYN's built-in root service (the one behind
 Settings > "Run script as root"). It falls back to `su` on rooted devices.
 
-Toggle it with the **Docked: built-in screens powered off / black** button on the bottom or dock
-screen.
+Toggle it in **Bifrost settings > Docking**.
 
 If a built-in screen stays dark after unplugging (for example, the launcher was killed while
 docked), press the power button twice. Android powers the panels back on when it wakes.
 
-## Handheld mode
+## Android apps
 
-- **A**: open the selected app (on the top screen)
-- **X / Y** or long-press: app menu (open on bottom screen, app info)
-- Games (apps marked as games) are listed first, then everything else A to Z.
+The **Android apps** console lists installed apps, games first. Long-press one to open it on the
+bottom screen.
 
 ## Install
 
@@ -55,6 +88,10 @@ Builds are signed with the committed `debug.keystore`, so new builds install ove
 Requires JDK 17 and the Android SDK (platform 35).
 
 ## Credits
+
+- Systems and emulator launch commands are ES-DE's
+  ([ES-DE Frontend](https://es-de.org), MIT, see `app/src/main/assets/ES-DE-LICENSE.txt`).
+- Box art comes from [libretro-thumbnails](https://github.com/libretro-thumbnails/libretro-thumbnails).
 
 - The `PServerBinder` transaction format was documented by
   [Thor Wayfinder](https://github.com/Thor-Wayfinder/thor-wayfinder). No code was copied.

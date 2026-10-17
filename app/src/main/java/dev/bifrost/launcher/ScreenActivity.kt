@@ -3,6 +3,7 @@ package dev.bifrost.launcher
 import android.app.Activity
 import android.app.ActivityManager
 import android.app.ActivityOptions
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -25,11 +26,13 @@ import android.widget.GridView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
+import android.widget.Toast
+import java.io.File
 
 /**
  * One class for every screen; the layout follows the display it lands on:
- * TOP (display 0, via [HomeActivity]): app grid. BOTTOM (built-in second panel): dashboard.
- * DOCK (external display): grid and dashboard together, while both built-in screens go dark.
+ * TOP (display 0, via [HomeActivity]): the selected console's games. BOTTOM (built-in second
+ * panel): the consoles. DOCK (external display): both, while the built-in screens go dark.
  */
 open class ScreenActivity : Activity() {
     private enum class Role { TOP, BOTTOM, DOCK }
@@ -38,9 +41,14 @@ open class ScreenActivity : Activity() {
     private lateinit var cover: View
     private var displayId = Display.INVALID_DISPLAY
     private var grid: GridView? = null
+    private var shelfGrid: GridView? = null
     private var title: TextView? = null
+    private var shelfTitle: TextView? = null
     private var dark: Boolean? = null
-    private val tiles = AppAdapter(this)
+    private var artVersion = -1
+    private var pendingArt: File? = null
+    private val tiles = TileAdapter(this)
+    private val shelves = ShelfAdapter(this)
     private val listener: () -> Unit = { refresh() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,7 +83,7 @@ open class ScreenActivity : Activity() {
             addView(content)
             addView(cover)
         })
-        grid?.requestFocus()
+        (grid ?: shelfGrid)?.requestFocus()
         App.listeners += listener
         refresh()
     }
@@ -95,7 +103,20 @@ open class ScreenActivity : Activity() {
             finish()
             return
         }
-        tiles.apps = Apps.list
+        val items = Library.tiles()
+        if (items !== tiles.items || title?.text.isNullOrEmpty()) {
+            tiles.items = items
+            grid?.columnWidth = dp(if (Library.selected == Library.APPS) 112 else 148)
+            grid?.setSelection(0)
+            title?.text = items.firstOrNull()?.label ?: emptyHint()
+        } else if (artVersion != Art.version) {
+            tiles.notifyDataSetChanged()
+        }
+        artVersion = Art.version
+        shelves.shelves = Library.shelves()
+        shelves.notifyDataSetChanged()
+        shelfTitle?.text = Library.title(Library.selected) + if (Library.scanning) "  ·  scanning…" else ""
+
         val off = role != Role.DOCK && Dock.docked
         if (off == dark) return
         dark = off
@@ -109,6 +130,12 @@ open class ScreenActivity : Activity() {
         window.insetsController?.let {
             if (off) it.hide(WindowInsets.Type.systemBars()) else it.show(WindowInsets.Type.systemBars())
         }
+    }
+
+    private fun emptyHint() = when {
+        Library.tree == null -> "Choose your ROMs folder in Bifrost settings"
+        Library.scanning -> "Looking for games…"
+        else -> "Nothing here"
     }
 
     /** Home pressed (or the top screen came back): docked, Home means the external screen. */
@@ -125,29 +152,33 @@ open class ScreenActivity : Activity() {
 
     // ── layouts ──────────────────────────────────────────────────────────
 
+    /** Top screen: the selected console's games. */
     private fun topLayout() = column(
-        row(clock(22f), spacer(), StatusView(this, multiline = false, brief = true)),
+        row(clock(22f), spacer(16), shelfTitleView(), spacer(), StatusView(this, multiline = false, brief = true)),
         titleView(),
         weighted(gridView()),
     )
 
+    /** Bottom screen: the consoles. */
     private fun bottomLayout() = column(
-        clock(64f).apply { gravity = Gravity.CENTER },
-        clock(18f, "EEEE d MMMM", Ui.DIM).apply { gravity = Gravity.CENTER },
-        StatusView(this, multiline = true).apply {
-            textSize = 16f
-            gravity = Gravity.CENTER
-            setPadding(0, dp(16), 0, 0)
-        },
-        weighted(View(this)),
+        row(clock(28f), spacer(12), clock(16f, "EEE d MMM", Ui.DIM)),
+        StatusView(this, multiline = false).apply { textSize = 13f },
+        weighted(shelfGridView(columns = GridView.AUTO_FIT)),
         actions(),
     )
 
+    /** External display: consoles on the left, games on the right. */
     private fun dockLayout() = column(
-        row(clock(34f), spacer(16), clock(18f, "EEEE d MMMM", Ui.DIM)),
+        row(clock(34f), spacer(16), clock(18f, "EEEE d MMMM", Ui.DIM), spacer(24), shelfTitleView()),
         StatusView(this, multiline = false).apply { textSize = 15f },
-        titleView(),
-        weighted(gridView()),
+        weighted(row(
+            shelfGridView(columns = 1).apply { layoutParams = LinearLayout.LayoutParams(dp(280), MATCH_PARENT) },
+            spacer(16),
+            column(titleView(), weighted(gridView())).apply {
+                setPadding(0, 0, 0, 0)
+                layoutParams = LinearLayout.LayoutParams(0, MATCH_PARENT, 1f)
+            },
+        ).apply { gravity = Gravity.TOP }),
         actions(),
     )
 
@@ -175,16 +206,21 @@ open class ScreenActivity : Activity() {
         title = this
     }
 
+    private fun shelfTitleView() = label(18f, Ui.DIM).apply {
+        maxLines = 1
+        shelfTitle = this
+    }
+
     private fun gridView() = GridView(this).apply {
         adapter = tiles
         numColumns = GridView.AUTO_FIT
-        columnWidth = dp(112)
+        columnWidth = dp(148)
         stretchMode = GridView.STRETCH_COLUMN_WIDTH
         verticalSpacing = dp(8)
         setSelector(rounded(0x337AA2FF, Ui.ACCENT))
-        setOnItemClickListener { _, _, position, _ -> Apps.launch(this@ScreenActivity, tiles.getItem(position), displayId) }
+        setOnItemClickListener { _, _, position, _ -> launch(tiles.getItem(position)) }
         setOnItemLongClickListener { _, view, position, _ ->
-            menu(view, tiles.getItem(position))
+            tileMenu(view, tiles.getItem(position))
             true
         }
         onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -192,23 +228,34 @@ open class ScreenActivity : Activity() {
                 title?.text = tiles.getItem(position).label
             }
 
-            override fun onNothingSelected(parent: AdapterView<*>?) {
-                title?.text = ""
-            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
         grid = this
     }
 
-    private fun actions() = row(
-        button("Settings") { startActivity(Intent(Settings.ACTION_SETTINGS)) },
-        button("Home app") { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) },
-        button(hardOffLabel()) {
-            Dock.hardOff = !Dock.hardOff
-            (it as Button).text = hardOffLabel()
-        },
-    )
+    private fun shelfGridView(columns: Int) = GridView(this).apply {
+        adapter = shelves
+        numColumns = columns
+        columnWidth = dp(170)
+        stretchMode = GridView.STRETCH_COLUMN_WIDTH
+        verticalSpacing = dp(10)
+        horizontalSpacing = dp(10)
+        setPadding(0, dp(8), 0, dp(8))
+        clipToPadding = false
+        setSelector(rounded(0x337AA2FF, Ui.ACCENT))
+        isDrawSelectorOnTop = true
+        setOnItemClickListener { _, _, position, _ -> Library.selected = shelves.getItem(position).id }
+        setOnItemLongClickListener { _, view, position, _ ->
+            shelfMenu(view, shelves.getItem(position))
+            true
+        }
+        shelfGrid = this
+    }
 
-    private fun hardOffLabel() = "Docked: built-in screens " + if (Dock.hardOff) "powered off" else "black"
+    private fun actions() = row(
+        button("Bifrost settings") { startActivity(Intent(this, SettingsActivity::class.java)) },
+        button("Android settings") { startActivity(Intent(Settings.ACTION_SETTINGS)) },
+    )
 
     private fun button(text: String, onClick: (View) -> Unit) = Button(this).apply {
         this.text = text
@@ -216,45 +263,138 @@ open class ScreenActivity : Activity() {
         setOnClickListener(onClick)
     }
 
-    private fun menu(anchor: View, app: Apps.Entry) {
-        val bottom = Dock.bottom()?.takeIf { role == Role.TOP && !Dock.docked }
-        PopupMenu(this, anchor).apply {
-            if (bottom != null) {
-                menu.add("Open on bottom screen").setOnMenuItemClickListener {
-                    Apps.launch(this@ScreenActivity, app, bottom.displayId)
-                    true
+    // ── opening things, menus ────────────────────────────────────────────
+
+    private fun launch(tile: Tile) = when (tile) {
+        is Library.Game -> Library.launch(this, tile, displayId)
+        is Apps.Entry -> Apps.launch(this, tile, displayId)
+        else -> Unit
+    }
+
+    private fun PopupMenu.item(text: String, action: () -> Unit) {
+        menu.add(text).setOnMenuItemClickListener { action(); true }
+    }
+
+    private fun tileMenu(anchor: View, tile: Tile) = PopupMenu(this, anchor).apply {
+        when (tile) {
+            is Library.Game -> {
+                val art = Art.game(this@ScreenActivity, tile)
+                item("Launch with…") { chooseEmulator(tile.system, tile) }
+                item("Set artwork…") { pickArt(art) }
+                item("Download artwork") { scrape(tile) }
+                if (art.exists()) item("Remove artwork") { art.delete(); Art.changed() }
+            }
+            is Apps.Entry -> {
+                val bottom = Dock.bottom()?.takeIf { role == Role.TOP && !Dock.docked }
+                if (bottom != null) item("Open on bottom screen") { Apps.launch(this@ScreenActivity, tile, bottom.displayId) }
+                item("App info") {
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", tile.component.packageName, null)))
                 }
             }
-            menu.add("App info").setOnMenuItemClickListener {
-                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", app.component.packageName, null)))
-                true
-            }
+        }
+        show()
+    }
+
+    private fun shelfMenu(anchor: View, shelf: Library.Shelf) {
+        if (shelf.id == Library.APPS) return
+        val art = Art.system(this, shelf.id)
+        PopupMenu(this, anchor).apply {
+            item("Default emulator…") { chooseEmulator(shelf.id, null) }
+            item("Set artwork…") { pickArt(art) }
+            if (art.exists()) item("Remove artwork") { art.delete(); Art.changed() }
             show()
         }
     }
 
-    // ── controller: A opens, X/Y opens the app menu ─────────────────────
+    /** For a game: launch with the pick and remember it. For a system: set its default. */
+    private fun chooseEmulator(system: String, game: Library.Game?) {
+        val options = Library.available(this, system, game).map { it.first.label }
+        if (options.isEmpty()) {
+            Toast.makeText(this, "No emulator for ${Library.title(system)} is installed", Toast.LENGTH_LONG).show()
+            return
+        }
+        val current = if (game != null) Library.chosen(this, game)?.first?.label else Library.systemChoice(system)
+        AlertDialog.Builder(this)
+            .setTitle(game?.label ?: "Default for ${Library.title(system)}")
+            .setSingleChoiceItems(options.toTypedArray(), options.indexOf(current)) { dialog, which ->
+                dialog.dismiss()
+                if (game != null) {
+                    Library.setGameChoice(game, options[which])
+                    Library.launch(this, game, displayId)
+                } else {
+                    Library.setSystemChoice(system, options[which])
+                }
+            }
+            .apply {
+                if (game != null && Library.gameChoice(game) != null) {
+                    setNeutralButton("Use system default") { _, _ -> Library.setGameChoice(game, null) }
+                }
+            }
+            .show()
+    }
+
+    private fun pickArt(target: File) {
+        pendingArt = target
+        @Suppress("DEPRECATION")
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"), REQUEST_ART)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        val target = pendingArt ?: return
+        val uri = data?.data ?: return
+        if (requestCode != REQUEST_ART || resultCode != RESULT_OK) return
+        val app = applicationContext
+        Thread {
+            val ok = Art.save(app, uri, target)
+            App.main.post { if (ok) Art.changed() else Toast.makeText(app, "Couldn't read that image", Toast.LENGTH_SHORT).show() }
+        }.start()
+    }
+
+    private fun scrape(game: Library.Game) {
+        val app = applicationContext
+        Thread {
+            val ok = Scraper.scrape(app, game)
+            App.main.post {
+                if (ok) Art.changed()
+                else Toast.makeText(app, "No artwork found for ${game.label}", Toast.LENGTH_SHORT).show()
+            }
+        }.start()
+    }
+
+    // ── controller: A opens, X/Y menu, L1/R1 switch console, Start settings ─
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val open = when (event.keyCode) {
-            KeyEvent.KEYCODE_BUTTON_A -> true
-            KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_BUTTON_Y -> false
-            else -> return super.dispatchKeyEvent(event)
+        val key = event.keyCode
+        if (key !in setOf(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_BUTTON_Y,
+                KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_START)) {
+            return super.dispatchKeyEvent(event)
         }
         if (event.action != KeyEvent.ACTION_UP) return true
-        val g = grid
-        val focus = currentFocus
-        if (g != null && focus === g) {
-            val view = g.selectedView ?: return true
-            val position = g.selectedItemPosition
-            if (open) g.performItemClick(view, position, position.toLong()) else menu(view, tiles.getItem(position))
-        } else if (open) {
-            focus?.performClick()
+        when (key) {
+            KeyEvent.KEYCODE_BUTTON_L1 -> Library.cycle(-1)
+            KeyEvent.KEYCODE_BUTTON_R1 -> Library.cycle(1)
+            KeyEvent.KEYCODE_BUTTON_START -> startActivity(Intent(this, SettingsActivity::class.java))
+            else -> {
+                val focus = currentFocus
+                val list = focus as? GridView
+                val view = list?.selectedView
+                val position = list?.selectedItemPosition ?: -1
+                when {
+                    view == null || position < 0 -> if (key == KeyEvent.KEYCODE_BUTTON_A) focus?.performClick()
+                    key == KeyEvent.KEYCODE_BUTTON_A -> list.performItemClick(view, position, position.toLong())
+                    list === grid -> tileMenu(view, tiles.getItem(position))
+                    else -> shelfMenu(view, shelves.getItem(position))
+                }
+            }
         }
         return true
     }
 
     companion object {
+        private const val REQUEST_ART = 1
+
         /** Live bottom/dock screens by display id ([HomeActivity] is not listed). */
         private val open = HashMap<Int, ScreenActivity>()
         private val starting = HashMap<Int, Long>()
