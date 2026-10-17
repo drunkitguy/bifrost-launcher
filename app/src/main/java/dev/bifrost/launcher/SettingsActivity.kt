@@ -16,6 +16,7 @@ class SettingsActivity : Activity() {
     private lateinit var art: TextView
     private lateinit var hardOff: Button
     private lateinit var view: Button
+    private lateinit var theme: Button
     private val listener: () -> Unit = { render() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -26,6 +27,7 @@ class SettingsActivity : Activity() {
             Library.mediaView = !Library.mediaView
             render()
         }
+        theme = button("") { chooseTheme() }
         hardOff = button("") {
             Dock.hardOff = !Dock.hardOff
             render()
@@ -46,6 +48,9 @@ class SettingsActivity : Activity() {
                 art,
                 view,
                 label(14f, Ui.DIM).apply { text = HELP },
+                section("Look"),
+                theme,
+                label(14f, Ui.DIM).apply { text = THEME_HELP },
                 section("Docking"),
                 hardOff,
                 section("System"),
@@ -54,7 +59,7 @@ class SettingsActivity : Activity() {
             ).forEach(::addView)
         }
         setContentView(ScrollView(this).apply {
-            setBackgroundColor(Ui.BG)
+            background = Theme.background(this@SettingsActivity)
             addView(column)
         })
         App.listeners += listener
@@ -74,6 +79,7 @@ class SettingsActivity : Activity() {
             else -> "ROMs folder: " + docIdToPath(DocumentsContract.getTreeDocumentId(tree)) +
                 "\n$count games in ${Library.games.size} systems" + if (Library.scanning) " · scanning…" else ""
         }
+        theme.text = "Theme: ${Theme.current.name}"
         view.text = "Game shelf shows: " + if (Library.mediaView) "discs & cartridges" else "cases"
         hardOff.text = "Docked: built-in screens " + if (Dock.hardOff) "powered off (root)" else "black only"
     }
@@ -108,6 +114,36 @@ class SettingsActivity : Activity() {
         }.start()
     }
 
+    /** Built-in themes plus packs found in ROMs/bifrost_themes. */
+    private fun chooseTheme() {
+        val app = applicationContext
+        Thread {
+            val packs = runCatching { Theme.packs(app) }.getOrDefault(emptyList()).map { it.first }
+            App.main.post {
+                val names = Theme.builtIn.map { it.name } + packs
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Theme")
+                    .setSingleChoiceItems(names.toTypedArray(), names.indexOf(Theme.current.name)) { dialog, which ->
+                        dialog.dismiss()
+                        if (which < Theme.builtIn.size) useTheme(Theme.builtIn[which])
+                        else Thread {
+                            val installed = runCatching { Theme.install(app, names[which]) }.getOrNull()
+                            App.main.post {
+                                if (installed != null) useTheme(installed)
+                                else android.widget.Toast.makeText(app, "That theme pack couldn't be read", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }.start()
+                    }
+                    .show()
+            }
+        }.start()
+    }
+
+    private fun useTheme(theme: Theme) {
+        Theme.use(this, theme)
+        recreate()
+    }
+
     private fun section(text: String) = label(13f, Ui.ACCENT, bold = true).apply {
         this.text = text.uppercase()
         setPadding(0, dp(24), 0, dp(6))
@@ -123,12 +159,17 @@ class SettingsActivity : Activity() {
         private const val REQUEST_FOLDER = 1
         private var scraping = false
 
+        private const val THEME_HELP =
+            "Theme packs: put a folder per theme in ROMs/bifrost_themes, each with a theme.json " +
+                "({\"background\": \"#101418\", \"surface\": \"#1A1F27\", \"accent\": \"#7AA2FF\", \"text\": \"#FFFFFF\", " +
+                "\"dim\": \"#9AA0A6\", \"light\": false, \"wallpaper\": \"wallpaper.png\"}) and optionally the wallpaper image."
+
         private const val HELP =
             "Put each console's games in a subfolder named like ES-DE (gc, wii, n3ds, switch, ps2, psx, psp, nds, " +
                 "n64, dreamcast, gba, snes…) or by full name (\"Nintendo GameCube\"). Long-press a console to pick its " +
                 "emulator, a game to pick one just for it. Custom launchers: put bifrost_systems.xml and " +
                 "bifrost_find_rules.xml (ES-DE format) in the ROMs folder. Artwork comes from the libretro thumbnail " +
-                "server; long-press a game or console to use your own image. System logos and console art: Slate " +
+                "server, descriptions and years from Wikipedia; long-press a game or console to use your own image. System logos and console art: Slate " +
                 "theme for ES-DE (CC BY-NC-SA), downloaded on first use; logos are their owners' trademarks."
     }
 }

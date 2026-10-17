@@ -44,6 +44,36 @@ console art come from ES-DE's [Slate theme](https://gitlab.com/es-de/themes/slat
 (CC BY-NC-SA) and game logos from libretro-thumbnails, all downloaded on first use; nothing
 trademarked ships in the APK. Cases and discs are drawn from the box art.
 
+### Console menus
+
+Some consoles open into their own menu instead of the shelf:
+
+| Console | Menu |
+|---|---|
+| Wii, Wii U | Channel grid, 12 a page, with the curved bar, Wii button, clock and mail |
+| PSP, PS3 | XMB: month-colored background with drifting waves, category icons, vertical game list |
+| Switch | HOME row of square tiles, pulsing cyan border, round shortcut icons |
+| 3DS, DS | HOME menu: the game's logo on the top screen, the icon row with its name bubble and Open bar on the bottom screen (both halves on one screen when docked) |
+
+Long-press a console on the home row to switch it between its menu and the shelf.
+
+### Game info
+
+Highlighting a game looks up its release year and description on Wikipedia (once, then kept on
+the device) and shows them on the details screen with the emulator, last played and play time.
+
+### Themes
+
+Settings > Look > Theme: Midnight, Snow, Neon, Crimson, Ocean, or your own packs. A pack is a
+folder in `ROMs/bifrost_themes/` with a `theme.json`:
+
+```json
+{ "background": "#101418", "surface": "#1A1F27", "accent": "#7AA2FF",
+  "text": "#FFFFFF", "dim": "#9AA0A6", "light": false, "wallpaper": "wallpaper.png" }
+```
+
+and optionally that wallpaper image.
+
 ### Launchers
 
 - **Long-press a console** (or press X/Y on it): choose its default emulator.
@@ -121,6 +151,7 @@ Requires JDK 17 and the Android SDK (platform 35).
 - System logos and console art: [Slate for ES-DE](https://gitlab.com/es-de/themes/slate-es-de)
   (CC BY-NC-SA), downloaded at runtime. Logos are trademarks of their owners.
 - SVG rendering: [AndroidSVG](https://github.com/BigBadaboom/androidsvg) (Apache 2.0).
+- Game descriptions and years: [Wikipedia](https://en.wikipedia.org) (CC BY-SA), credited on screen.
 - Box art and game logos come from [libretro-thumbnails](https://github.com/libretro-thumbnails/libretro-thumbnails).
 
 - The `PServerBinder` transaction format was documented by

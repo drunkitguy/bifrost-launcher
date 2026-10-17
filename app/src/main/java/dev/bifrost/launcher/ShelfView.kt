@@ -351,7 +351,7 @@ internal object Faces {
     }
 
     /** The game's own logo (scraped), decoded off the main thread; null until then or if it has none. */
-    private fun gameLogo(ctx: Context, game: Library.Game, h: Int, onReady: () -> Unit): Bitmap? {
+    fun gameLogo(ctx: Context, game: Library.Game, h: Int, onReady: () -> Unit): Bitmap? {
         val key = "l:${game.docId}:$h:${Art.version}"
         cache.get(key)?.let { return it }
         val file = Art.gameLogo(ctx, game)
@@ -362,6 +362,25 @@ internal object Faces {
                 pending.remove(key)
                 if (logo != null) {
                     cache.put(key, logo)
+                    onReady()
+                }
+            }
+        }
+        return null
+    }
+
+    /** The plain box art, decoded off the main thread; null until then or if there is none. */
+    fun art(ctx: Context, game: Library.Game, size: Int, onReady: () -> Unit): Bitmap? {
+        val key = "a:${game.docId}:$size:${Art.version}"
+        cache.get(key)?.let { return it }
+        val file = Art.game(ctx, game)
+        if (!file.exists() || !pending.add(key)) return null
+        Images.pool.execute {
+            val bitmap = Images.decode(file, size)
+            App.main.post {
+                pending.remove(key)
+                if (bitmap != null) {
+                    cache.put(key, bitmap)
                     onReady()
                 }
             }

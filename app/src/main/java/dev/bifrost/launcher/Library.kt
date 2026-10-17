@@ -146,9 +146,9 @@ internal object Library {
 
     // ── scanning ─────────────────────────────────────────────────────────
 
-    private class Doc(val id: String, val name: String, val dir: Boolean)
+    class Doc(val id: String, val name: String, val dir: Boolean)
 
-    private fun children(ctx: Context, tree: Uri, docId: String): List<Doc> {
+    fun children(ctx: Context, tree: Uri, docId: String): List<Doc> {
         val uri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId)
         val columns = arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE)
         return ctx.contentResolver.query(uri, columns, null, null, null)?.use { c ->

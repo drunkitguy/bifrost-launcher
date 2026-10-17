@@ -198,7 +198,7 @@ internal class Glyph(private val kind: Kind, private val color: Int = Ui.TEXT) :
 internal fun Context.pill(text: String) = label(14f, Ui.TEXT).apply {
     this.text = text
     setPadding(dp(12), dp(5), dp(12), dp(5))
-    background = rounded(0x33FFFFFF, 0x22FFFFFF)
+    background = rounded((Ui.TEXT and 0xFFFFFF) or 0x22000000, (Ui.TEXT and 0xFFFFFF) or 0x18000000)
 }
 
 internal fun TextView.showIf(value: String?) {

@@ -11,8 +11,8 @@ android {
         applicationId = "dev.bifrost.launcher"
         minSdk = 31
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.5.0"
+        versionCode = 6
+        versionName = "0.6.0"
     }
 
     // Committed debug key: every CI build has the same signature, so updates install over each other.

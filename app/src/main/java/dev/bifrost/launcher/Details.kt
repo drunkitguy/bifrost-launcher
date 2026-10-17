@@ -17,6 +17,10 @@ internal class Details(private val screen: ScreenActivity) {
     private val hero = ImageView(screen).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
     private val name = LogoLabel(screen, 22f, Ui.TEXT, bold = true, logoHeightPx = screen.dp(52))
     private val pills = LinearLayout(screen).apply { gravity = Gravity.CENTER }
+    private val about = screen.label(13f, Ui.DIM).apply {
+        maxLines = 4
+        ellipsize = android.text.TextUtils.TruncateAt.END
+    }
     private val play = Button(screen).apply {
         isAllCaps = false
         textSize = 20f
@@ -38,11 +42,12 @@ internal class Details(private val screen: ScreenActivity) {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER_HORIZONTAL
         setPadding(screen.dp(16), screen.dp(12), screen.dp(16), screen.dp(12))
-        background = screen.rounded(0xFF151922.toInt(), 0x22FFFFFF)
+        background = screen.rounded(Ui.SURFACE, 0x22FFFFFF)
         addView(systemLogo, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
         addView(hero, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f).apply { topMargin = screen.dp(8) })
         addView(name, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = screen.dp(8) })
         addView(pills, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = screen.dp(8) })
+        addView(about, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = screen.dp(8) })
         addView(LinearLayout(screen).apply {
             gravity = Gravity.CENTER
             addView(play, LinearLayout.LayoutParams(WRAP_CONTENT, screen.dp(52)))
@@ -53,11 +58,12 @@ internal class Details(private val screen: ScreenActivity) {
     fun bind() {
         val game = Library.highlight?.takeIf { Library.inside && Library.selected != Library.APPS && it in Library.gamesOf(Library.selected) }
         if (game == null) return bindShelf(Library.selected)
-        val now = "${game.docId}:${Library.inside}:${Art.version}:${Library.mediaView}:${Library.lastPlayed(game)}"
+        val meta = Meta.get(screen, game) { refresh() }
+        val now = "${game.docId}:${Library.inside}:${Art.version}:${Library.mediaView}:${Library.lastPlayed(game)}:${meta != null}"
         if (now == key) return
         key = now
         val look = Look.of(game.system)
-        systemLogo.show(Library.title(game.system), Logos.get(screen, game.system, Logos.Kind.LOGO, screen.dp(28)) { refresh() })
+        systemLogo.show(Library.title(game.system), Logos.get(screen, game.system, Logos.Kind.LOGO, screen.dp(28), onDark = !Theme.current.light) { refresh() })
         hero.setImageBitmap(
             if (Library.mediaView) Faces.media(screen, game, look, screen.dp(260)) { refresh() }
             else Faces.cover(screen, game, look, screen.dp(260)) { refresh() },
@@ -65,7 +71,9 @@ internal class Details(private val screen: ScreenActivity) {
         name.showFile(game.label, Art.gameLogo(screen, game))
         val emulator = Library.chosen(screen, game)?.first?.label?.removeSuffix(" (Standalone)")
         val last = Library.lastPlayed(game)
+        about.showIf(meta?.description?.let { "$it  (Wikipedia)" })
         setPills(
+            meta?.year,
             emulator ?: "No emulator installed",
             if (last > 0) agoText(last, System.currentTimeMillis()) else "Never played",
             Library.playTime(game).takeIf { it > 0 }?.let(::playTimeText),
@@ -84,7 +92,8 @@ internal class Details(private val screen: ScreenActivity) {
         key = now
         systemLogo.show("", null)
         hero.setImageBitmap(Logos.get(screen, id, Logos.Kind.SCENE, screen.dp(220)) { refresh() })
-        name.show(Library.title(id), Logos.get(screen, id, Logos.Kind.LOGO, screen.dp(52)) { refresh() })
+        name.show(Library.title(id), Logos.get(screen, id, Logos.Kind.LOGO, screen.dp(52), onDark = !Theme.current.light) { refresh() })
+        about.showIf(null)
         val count = if (id == Library.APPS) "${Apps.list.size} apps" else "${Library.gamesOf(id).size} games"
         val emulator = if (id == Library.APPS || id == Library.RECENT) null else Library.available(screen, id).let { options ->
             (options.firstOrNull { it.first.label == Library.systemChoice(id) } ?: options.firstOrNull { "Standalone" in it.first.label } ?: options.firstOrNull())

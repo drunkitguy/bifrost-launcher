@@ -22,12 +22,13 @@ import android.widget.TextClock
 import android.widget.TextView
 import java.io.File
 
+/** The current theme's colors (see [Theme]). */
 internal object Ui {
-    const val BG = 0xFF0E1116.toInt()
-    const val SURFACE = 0xFF1A1F27.toInt()
-    const val ACCENT = 0xFF7AA2FF.toInt()
-    const val TEXT = 0xFFE8EAED.toInt()
-    const val DIM = 0xFF9AA0A6.toInt()
+    val BG get() = Theme.current.bg
+    val SURFACE get() = Theme.current.surface
+    val ACCENT get() = Theme.current.accent
+    val TEXT get() = Theme.current.text
+    val DIM get() = Theme.current.dim
 }
 
 internal fun Context.dp(v: Int) = (v * resources.displayMetrics.density).toInt()

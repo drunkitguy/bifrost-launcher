@@ -13,6 +13,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         prefs = getSharedPreferences("bifrost", MODE_PRIVATE)
+        Theme.load(this)
         Apps.reload(this)
         Library.init(this)
         Dock.init(this)

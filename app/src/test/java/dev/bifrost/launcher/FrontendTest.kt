@@ -155,4 +155,24 @@ class FrontendTest {
         assertEquals(0L, sessionLength(100, 50)) // clock went backwards
         assertEquals(12 * 3_600_000L, sessionLength(0, 48 * 3_600_000L)) // left running overnight
     }
+
+    @Test
+    fun themeColorsParse() {
+        assertEquals(0xFF101418.toInt(), parseHex("#101418"))
+        assertEquals(0x80FFFFFF.toInt(), parseHex("80ffffff"))
+        assertNull(parseHex("#12345"))
+        assertNull(parseHex("blue"))
+    }
+
+    @Test
+    fun wikipediaMatchingAndYears() {
+        val titles = listOf("Mario Kart Wii", "Super Mario Galaxy", "Super Mario Galaxy 2", "List of Wii games")
+        assertEquals("Super Mario Galaxy", pickTitle("Super Mario Galaxy (USA)", titles))
+        assertEquals("Super Mario Galaxy 2", pickTitle("Super Mario Galaxy 2", titles))
+        assertEquals("Metroid Prime (video game)", pickTitle("Metroid Prime", listOf("Metroid Prime (video game)", "Metroid")))
+        assertNull(pickTitle("Zelda", titles))
+        assertEquals("2007", yearIn("2007 video game"))
+        assertEquals("1998", yearIn("Sonic Adventure is a 1998 platform game"))
+        assertNull(yearIn("platform game"))
+    }
 }

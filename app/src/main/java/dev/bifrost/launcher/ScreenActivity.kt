@@ -43,6 +43,9 @@ open class ScreenActivity : Activity() {
     private var shelf: ShelfView? = null
     private lateinit var insert: InsertView
     private var carousel: HomeCarousel? = null
+    private var menu: ConsoleMenu? = null
+    /** Bottom screen only: the 3DS/DS icon row, which lives down there like on the real thing. */
+    private var bottomMenu: ConsoleMenu? = null
     private var hints: HintBar? = null
     private var details: Details? = null
     private var title: LogoLabel? = null
@@ -83,7 +86,7 @@ open class ScreenActivity : Activity() {
         }
         insert = InsertView(this)
         setContentView(FrameLayout(this).apply {
-            setBackgroundColor(Ui.BG)
+            background = Theme.background(this@ScreenActivity)
             addView(content)
             addView(insert)
             addView(cover)
@@ -121,10 +124,29 @@ open class ScreenActivity : Activity() {
         val inside = Library.inside
         val apps = Library.selected == Library.APPS
         val items = Library.tiles()
+        val style = if (inside && !apps) Menus.styleFor(Library.selected) else null
         carousel?.visibility = if (inside) View.GONE else View.VISIBLE
         grid?.visibility = if (inside && apps) View.VISIBLE else View.GONE
-        shelf?.visibility = if (inside && !apps) View.VISIBLE else View.GONE
-        title?.visibility = if (inside) View.VISIBLE else View.GONE
+        shelf?.visibility = if (inside && !apps && style == null) View.VISIBLE else View.GONE
+        menu?.visibility = if (style != null) View.VISIBLE else View.GONE
+        title?.visibility = if (inside && style == null) View.VISIBLE else View.GONE
+        // 3DS/DS: icons on the bottom screen, banner on top, as on the hardware.
+        val split = style == ConsoleMenu.Style.DS && !Dock.docked && Dock.bottom() != null
+        menu?.let { m ->
+            if (style != null) m.style = style
+            m.part = if (split && role == Role.TOP) ConsoleMenu.Part.TOP else ConsoleMenu.Part.BOTH
+            m.games = Library.gamesOf(Library.selected)
+            m.sync(Library.highlight)
+        }
+        bottomMenu?.let { m ->
+            m.visibility = if (split) View.VISIBLE else View.GONE
+            m.style = ConsoleMenu.Style.DS
+            m.part = ConsoleMenu.Part.BOTTOM
+            if (split) {
+                m.games = Library.gamesOf(Library.selected)
+                m.sync(Library.highlight)
+            }
+        }
         carousel?.shelves = Library.shelves()
         if (apps) {
             if (items !== tiles.items) {
@@ -138,10 +160,11 @@ open class ScreenActivity : Activity() {
         }
         if (inside && items.isEmpty()) title?.show(emptyHint(), null)
         // Keep the controller on whichever browser is showing.
-        val visible = listOfNotNull(carousel, grid, shelf).firstOrNull { it.visibility == View.VISIBLE }
-        if (visible != null && listOfNotNull(carousel, grid, shelf).any { it.hasFocus() && it !== visible }) visible.requestFocus()
+        val browsers = listOfNotNull(carousel, grid, shelf, menu)
+        val visible = browsers.firstOrNull { it.visibility == View.VISIBLE }
+        if (visible != null && browsers.any { it.hasFocus() && it !== visible }) visible.requestFocus()
         artVersion = Art.version
-        shelfTitle?.show(Library.title(Library.selected), Logos.get(this, Library.selected, Logos.Kind.LOGO, dp(26)) { refresh() })
+        shelfTitle?.show(Library.title(Library.selected), Logos.get(this, Library.selected, Logos.Kind.LOGO, dp(26), onDark = !Theme.current.light) { refresh() })
         shelf?.media = Library.mediaView
         if (inside && !apps) insert.post { insert.prefetch(Library.selected) }
         hints?.set(hintsFor())
@@ -199,7 +222,16 @@ open class ScreenActivity : Activity() {
     /** Bottom screen: details of whatever is highlighted up top, and the dock. */
     private fun bottomLayout() = column(
         row(clock(20f), spacer(10), clock(14f, "EEE d MMM", Ui.DIM), spacer(), StatusView(this, multiline = false).apply { textSize = 12f }),
-        weighted(Details(this).also { details = it }.view),
+        weighted(FrameLayout(this).apply {
+            addView(Details(this@ScreenActivity).also { details = it }.view)
+            addView(ConsoleMenu(this@ScreenActivity).apply {
+                visibility = View.GONE
+                onSelect = { Library.highlight = it }
+                onActivate = { play(it) }
+                onMenu = { tileMenu(this, it) }
+                bottomMenu = this
+            })
+        }),
         dockRow(),
     )
 
@@ -283,6 +315,13 @@ open class ScreenActivity : Activity() {
             carousel = this
         })
         addView(gridView())
+        addView(ConsoleMenu(this@ScreenActivity).apply {
+            visibility = View.GONE
+            onSelect = { Library.highlight = it }
+            onActivate = ::insertGame
+            onMenu = { tileMenu(this, it) }
+            menu = this
+        })
         addView(ShelfView(this@ScreenActivity).apply {
             onSelect = {
                 title?.showFile(it.label, Art.gameLogo(this@ScreenActivity, it))
@@ -305,8 +344,10 @@ open class ScreenActivity : Activity() {
         if (Library.chosen(this, game) == null) return Library.launch(this, game, displayId) // explains what's missing
         val bottom = Dock.bottom()?.takeIf { role == Role.TOP && !Dock.docked }?.let { open[it.displayId] }
         val at = IntArray(2).also(insert::getLocationInWindow)
-        val from = shelf!!.coverRectInWindow().apply { offset(-at[0].toFloat(), -at[1].toFloat()) }
-        insert.play(game, if (bottom != null) InsertView.Mode.TOP else InsertView.Mode.SINGLE, from, mediaOnly = Library.mediaView)
+        val from = (menu?.takeIf { it.visibility == View.VISIBLE }?.selectedRectInWindow() ?: shelf!!.coverRectInWindow())
+            .apply { offset(-at[0].toFloat(), -at[1].toFloat()) }
+        val fromMenu = menu?.visibility == View.VISIBLE
+        insert.play(game, if (bottom != null) InsertView.Mode.TOP else InsertView.Mode.SINGLE, from, mediaOnly = Library.mediaView || fromMenu)
         bottom?.insert?.play(game, InsertView.Mode.BOTTOM, null)
         App.main.postDelayed({ Library.launch(this, game, displayId) }, InsertView.TOTAL)
     }
@@ -371,6 +412,8 @@ open class ScreenActivity : Activity() {
         val art = Art.system(this, shelf.id)
         PopupMenu(this, anchor).apply {
             item("Default emulator…") { chooseEmulator(shelf.id, null) }
+            if (Menus.styleFor(shelf.id) != null) item("Show as shelf") { Menus.useShelf(shelf.id, true) }
+            else if (App.prefs.getBoolean("shelf.${shelf.id}", false)) item("Show console menu") { Menus.useShelf(shelf.id, false) }
             item("Set artwork…") { pickArt(art) }
             if (art.exists()) item("Remove artwork") { art.delete(); Art.changed() }
             show()
@@ -450,6 +493,10 @@ open class ScreenActivity : Activity() {
             KeyEvent.KEYCODE_BUTTON_SELECT -> Library.mediaView = !Library.mediaView
             else -> {
                 val focus = currentFocus
+                (focus as? ConsoleMenu)?.let { m ->
+                    if (key == KeyEvent.KEYCODE_BUTTON_A) m.activate() else m.current?.let { tileMenu(m, it) }
+                    return true
+                }
                 (focus as? HomeCarousel)?.let { c ->
                     if (key == KeyEvent.KEYCODE_BUTTON_A) c.enter() else c.current?.let { shelfMenu(c, it) }
                     return true
@@ -479,6 +526,12 @@ open class ScreenActivity : Activity() {
         private val open = HashMap<Int, ScreenActivity>()
         private val starting = HashMap<Int, Long>()
         private var home: ScreenActivity? = null
+
+        /** Rebuilds every screen, e.g. after a theme change. */
+        fun recreateAll() {
+            home?.recreate()
+            open.values.toList().forEach { it.recreate() }
+        }
 
         /** Starts [game] from whichever screen holds the shelf, with the insert animation. */
         internal fun play(game: Library.Game) {
