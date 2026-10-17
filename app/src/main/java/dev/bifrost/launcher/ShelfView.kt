@@ -46,6 +46,14 @@ internal class ShelfView(context: Context) : View(context) {
 
     val current: Library.Game? get() = games.getOrNull(index)
 
+    /** Show the discs and cartridges themselves instead of their cases. */
+    var media = false
+        set(value) {
+            if (value == field) return
+            field = value
+            invalidate()
+        }
+
     private var look = Look.of("")
     private var label = ""
     private var index = 0
@@ -119,7 +127,7 @@ internal class ShelfView(context: Context) : View(context) {
 
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
             dragging = true
-            scroll = (scroll + dx / spacing).coerceIn(0f, (games.size - 1).toFloat().coerceAtLeast(0f))
+            scroll = (scroll + dx / step()).coerceIn(0f, (games.size - 1).toFloat().coerceAtLeast(0f))
             select(scroll.roundToInt())
             invalidate()
             return true
@@ -127,13 +135,13 @@ internal class ShelfView(context: Context) : View(context) {
 
         override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
             dragging = false
-            select((scroll - vx / (spacing * 6)).roundToInt())
+            select((scroll - vx / (step() * 6)).roundToInt())
             return true
         }
 
         override fun onSingleTapUp(e: MotionEvent): Boolean {
             if (pulledBounds.contains(e.x, e.y)) activate()
-            else select((scroll + (e.x - cx) / spacing).roundToInt())
+            else select((scroll + (e.x - cx) / step()).roundToInt())
             return true
         }
 
@@ -177,6 +185,11 @@ internal class ShelfView(context: Context) : View(context) {
         if (index !in pull) pull[index] = 0f.also { moving = true }
 
         drawShelf(canvas)
+        if (media) {
+            drawMediaRow(canvas)
+            if (moving) postInvalidateOnAnimation() else lastFrame = 0L
+            return
+        }
 
         val visible = (spacing.let { (width / 2f) / it + 3 }).toInt()
         val first = (scroll.toInt() - visible).coerceAtLeast(0)
@@ -220,11 +233,38 @@ internal class ShelfView(context: Context) : View(context) {
             paint.shader = null
         }
         faces.spine?.let { quad ->
-            draw(canvas, Faces.spine(context, game, look, label, depth.toInt(), caseH.toInt()), quad, light(sin(Math.toRadians(theta.toDouble())).toFloat()))
+            draw(canvas, Faces.spine(context, game, look, label, depth.toInt(), caseH.toInt()) { invalidate() }, quad,
+                light(sin(Math.toRadians(theta.toDouble())).toFloat()))
         }
         if (cover != null) faces.cover?.let { quad ->
             draw(canvas, cover, quad, light(cos(Math.toRadians(theta.toDouble())).toFloat()))
             if (i == index) pulledBounds = Box.bounds(quad)
+        }
+    }
+
+    /** Distance between neighbors on screen, in pixels. */
+    private fun step() = if (media) caseH * 0.95f * 0.42f else spacing
+
+    /** Discs and cartridges laid out in a row, overlapping; the selected one lifts and grows. */
+    private fun drawMediaRow(canvas: Canvas) {
+        val size = caseH * 0.95f
+        val step = step()
+        val visible = (width / 2f / step + 2).toInt()
+        val first = (scroll.toInt() - visible).coerceAtLeast(0)
+        val last = (scroll.toInt() + visible).coerceAtMost(games.size - 1)
+        for (i in (first..last).sortedBy { pull[it] ?: 0f }) {
+            val p = pull[i] ?: 0f
+            val bitmap = Faces.media(context, games[i], look, size.toInt()) { invalidate() }
+            val scale = (0.66f + 0.34f * p) * size / maxOf(bitmap.width, bitmap.height)
+            val w = bitmap.width * scale
+            val h = bitmap.height * scale
+            val x = cx + (i - scroll) * step + p * step * 0.35f
+            val bottom = cy + caseH / 2f - p * caseH * 0.06f
+            val dst = RectF(x - w / 2, bottom - h, x + w / 2, bottom)
+            paint.colorFilter = light(0.45f + 0.55f * p)
+            canvas.drawBitmap(bitmap, null, dst, paint)
+            paint.colorFilter = null
+            if (i == index) pulledBounds = dst
         }
     }
 
@@ -302,9 +342,51 @@ internal object Faces {
     }
     private val pending = HashSet<String>()
 
-    fun spine(ctx: Context, game: Library.Game, look: Look, label: String, w: Int, h: Int): Bitmap {
-        val key = "s:${game.docId}:$w:$h"
-        return cache.get(key) ?: Render.spine(look, game.label, label, w, h).also { cache.put(key, it) }
+    fun spine(ctx: Context, game: Library.Game, look: Look, label: String, w: Int, h: Int, onReady: () -> Unit): Bitmap {
+        val light = Render.isLight(look.banner ?: if (look.plastic) look.caseColor else Render.darker(look.accent, 0.55f))
+        val systemLogo = Logos.get(ctx, game.system, Logos.Kind.LOGO, (w * 0.62f).toInt().coerceAtLeast(8), onDark = !light, onReady = onReady)
+        val gameLogo = gameLogo(ctx, game, (w * 0.8f).toInt().coerceAtLeast(8), onReady)
+        val key = "s:${game.docId}:$w:$h:${systemLogo != null}:${gameLogo != null}:${Art.version}"
+        return cache.get(key) ?: Render.spine(look, game.label, label, systemLogo, gameLogo, w, h).also { cache.put(key, it) }
+    }
+
+    /** The game's own logo (scraped), decoded off the main thread; null until then or if it has none. */
+    private fun gameLogo(ctx: Context, game: Library.Game, h: Int, onReady: () -> Unit): Bitmap? {
+        val key = "l:${game.docId}:$h:${Art.version}"
+        cache.get(key)?.let { return it }
+        val file = Art.gameLogo(ctx, game)
+        if (!file.exists() || !pending.add(key)) return null
+        Images.pool.execute {
+            val logo = Images.decode(file, h)
+            App.main.post {
+                pending.remove(key)
+                if (logo != null) {
+                    cache.put(key, logo)
+                    onReady()
+                }
+            }
+        }
+        return null
+    }
+
+    /** The disc or cartridge with the box art as its label. Until the art is decoded, a plain one. */
+    fun media(ctx: Context, game: Library.Game, look: Look, size: Int, onReady: () -> Unit): Bitmap {
+        val key = "m:${game.docId}:$size:${Art.version}"
+        cache.get(key)?.let { return it }
+        val plainKey = "mp:${game.docId}:$size"
+        val plain = cache.get(plainKey) ?: Render.media(look, null, game.label, size).also { cache.put(plainKey, it) }
+        val art = Art.game(ctx, game)
+        if (art.exists() && pending.add(key)) {
+            Images.pool.execute {
+                val face = Render.media(look, Images.decode(art, size), game.label, size)
+                App.main.post {
+                    pending.remove(key)
+                    cache.put(key, face)
+                    onReady()
+                }
+            }
+        }
+        return plain
     }
 
     /** The cover face. Until the art is decoded, a title-only cover. */

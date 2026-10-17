@@ -99,4 +99,47 @@ class FrontendTest {
         assertEquals("Mario%20_%20Luigi%20%28USA%29.png", bestMatch("Mario & Luigi", index))
         assertNull(bestMatch("Zelda", index))
     }
+
+    @Test
+    fun dolphinAzaharEdenAndEdenNightlyLaunch() {
+        val rules = File("src/main/assets/es_find_rules.xml").inputStream().use(::parseFindRules)
+        val all = vars(installed = setOf("DOLPHIN", "AZAHAR", "EDEN", "EDEN-NIGHTLY"))
+        for ((system, label, emulator) in listOf(
+            Triple("gc", "Dolphin (Standalone)", "DOLPHIN"),
+            Triple("wii", "Dolphin (Standalone)", "DOLPHIN"),
+            Triple("n3ds", "Azahar (Standalone)", "AZAHAR"),
+            Triple("switch", "Eden (Standalone)", "EDEN"),
+            Triple("switch", "Eden Nightly (Standalone)", "EDEN-NIGHTLY"),
+        )) {
+            val plan = Launch.plan(command(system, label), all)!!
+            assertEquals(emulator, plan.emulator)
+            assertTrue("$label hands over the ROM", plan.grantsUri)
+            assertTrue(rules[emulator]!!.isNotEmpty())
+        }
+        val eden = Launch.plan(command("switch", "Eden (Standalone)"), all)!!
+        assertEquals("android.nfc.action.TECH_DISCOVERED", eden.action)
+        assertEquals(all.uri, eden.data)
+        assertTrue(rules["EDEN"]!!.any { it.startsWith("dev.eden.eden_emulator/") })
+        assertTrue(rules["EDEN-NIGHTLY"]!!.any { it.startsWith("dev.eden.eden_emulator.nightly/") })
+        assertTrue(rules["AZAHAR"]!!.any { it.startsWith("org.azahar_emu.azahar/") })
+        // Only the nightly installed: still a Switch launcher.
+        assertNull(Launch.plan(command("switch", "Eden (Standalone)"), vars(installed = setOf("EDEN-NIGHTLY"))))
+        assertTrue(Launch.plan(command("switch", "Eden Nightly (Standalone)"), vars(installed = setOf("EDEN-NIGHTLY"))) != null)
+    }
+
+    @Test
+    fun logosTurnBlackLetteringWhite() {
+        assertEquals(0xFFF2F2F2.toInt(), lightenDark(0xFF000000.toInt()))
+        assertEquals(0x80F2F2F2.toInt(), lightenDark(0x80101010.toInt()))
+        assertEquals(0xFFC8102E.toInt(), lightenDark(0xFFC8102E.toInt())) // red stays red
+        assertEquals(0, lightenDark(0))
+    }
+
+    @Test
+    fun consoleIsCutAtTheGapBeforeTheDisc() {
+        // console 0..59, gap 60..69, disc 70..89, margin 90..99
+        val opaque = BooleanArray(100) { it < 60 || it in 70..89 }
+        assertEquals(60, consoleEnd(opaque))
+        assertNull(consoleEnd(BooleanArray(100) { true }))
+    }
 }

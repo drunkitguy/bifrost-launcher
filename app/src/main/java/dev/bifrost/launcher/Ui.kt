@@ -1,6 +1,7 @@
 package dev.bifrost.launcher
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.ConnectivityManager
@@ -14,10 +15,12 @@ import android.view.InputDevice
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextClock
 import android.widget.TextView
+import java.io.File
 
 internal object Ui {
     const val BG = 0xFF0E1116.toInt()
@@ -82,29 +85,58 @@ internal class StatusView(context: Context, private val multiline: Boolean, priv
 
 internal fun statusLines(ctx: Context, brief: Boolean): List<String> {
     val bm = ctx.getSystemService(BatteryManager::class.java)
-    val battery = "Battery ${bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)}%" +
-        if (bm.isCharging) " (charging)" else ""
+    val battery = "🔋 ${bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)}%" + if (bm.isCharging) " ⚡" else ""
     if (brief) return listOf(battery)
     val cm = ctx.getSystemService(ConnectivityManager::class.java)
     val caps = cm.getNetworkCapabilities(cm.activeNetwork)
     val net = when {
-        caps == null -> "Offline"
-        caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
-        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
-        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Mobile data"
-        else -> "Online"
+        caps == null -> "📵"
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "🖧"
+        else -> "📶"
     }
     val freeGb = StatFs(Environment.getDataDirectory().path).availableBytes / 1_000_000_000
     val pads = InputDevice.getDeviceIds().asList().mapNotNull { InputDevice.getDevice(it) }
         .filter { it.isExternal && it.supportsSource(InputDevice.SOURCE_GAMEPAD) }
-        .map { it.name }.distinct()
+        .map { it.descriptor }.distinct().size
     return listOfNotNull(
         battery,
         net,
-        "$freeGb GB free",
-        if (pads.isEmpty()) "No external controller" else "Controller: " + pads.joinToString(", "),
-        Dock.external()?.let { "Docked: ${it.name} ${it.mode.physicalWidth}×${it.mode.physicalHeight}" },
+        "💾 $freeGb GB",
+        if (pads > 0) "🎮 $pads" else null,
+        Dock.external()?.let { "📺 ${it.mode.physicalWidth}×${it.mode.physicalHeight}" },
     )
+}
+
+/** A logo when there is one, else the text. */
+internal class LogoLabel(ctx: Context, size: Float, color: Int, bold: Boolean, private val logoHeightPx: Int) : FrameLayout(ctx) {
+    private val text = ctx.label(size, color, bold).apply { maxLines = 1 }
+    private val image = ImageView(ctx).apply {
+        adjustViewBounds = true
+        scaleType = ImageView.ScaleType.FIT_START
+    }
+
+    init {
+        addView(text)
+        addView(image, LayoutParams(LayoutParams.WRAP_CONTENT, logoHeightPx))
+    }
+
+    fun show(label: String, logo: Bitmap?) {
+        text.text = label
+        image.tag = null
+        image.setImageBitmap(logo)
+        image.visibility = if (logo != null) VISIBLE else GONE
+        text.visibility = if (logo != null) INVISIBLE else VISIBLE
+        contentDescription = label
+    }
+
+    fun showFile(label: String, logo: File) {
+        if (!logo.exists()) return show(label, null)
+        text.text = label
+        text.visibility = INVISIBLE
+        image.visibility = VISIBLE
+        Images.load(image, logo, logoHeightPx * 4, null)
+        contentDescription = label
+    }
 }
 
 internal interface Tile {
@@ -159,9 +191,10 @@ internal class TileAdapter(private val ctx: Context) : BaseAdapter() {
     }
 }
 
-/** The consoles (and Android apps) the library holds, Cocoon-style. */
+/** The consoles (and Android apps) the library holds: console art and logo, no labels. */
 internal class ShelfAdapter(private val ctx: Context) : BaseAdapter() {
     var shelves: List<Library.Shelf> = emptyList()
+    var onArt: () -> Unit = {}
 
     override fun getCount() = shelves.size
     override fun getItem(position: Int) = shelves[position]
@@ -170,19 +203,22 @@ internal class ShelfAdapter(private val ctx: Context) : BaseAdapter() {
     override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
         val card = convertView as? LinearLayout ?: LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(ctx.dp(14), ctx.dp(12), ctx.dp(14), ctx.dp(12))
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(ctx.dp(12), ctx.dp(12), ctx.dp(12), ctx.dp(10))
             addView(ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_CENTER },
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(64)))
-            addView(ctx.label(17f, bold = true).apply { maxLines = 2 })
-            addView(ctx.label(13f, Ui.DIM))
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(84)))
+            addView(LogoLabel(ctx, 16f, Ui.TEXT, bold = true, logoHeightPx = ctx.dp(24)),
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    .apply { topMargin = ctx.dp(8) })
         }
         val shelf = shelves[position]
-        val art = Art.system(ctx, shelf.id)
         val image = card.getChildAt(0) as ImageView
-        image.visibility = if (art.exists()) View.VISIBLE else View.GONE
-        if (art.exists()) Images.load(image, art, ctx.dp(200), null)
-        (card.getChildAt(1) as TextView).text = shelf.title
-        (card.getChildAt(2) as TextView).text = if (shelf.id == Library.APPS) "${shelf.count} apps" else "${shelf.count} games"
+        // Your own console artwork wins over the downloaded one.
+        val custom = Art.system(ctx, shelf.id)
+        if (custom.exists()) Images.load(image, custom, ctx.dp(200), null)
+        else image.setImageBitmap(Logos.get(ctx, shelf.id, Logos.Kind.SCENE, ctx.dp(84), onReady = onArt))
+        (card.getChildAt(1) as LogoLabel).show(shelf.title, Logos.get(ctx, shelf.id, Logos.Kind.LOGO, ctx.dp(24), onReady = onArt))
+        card.contentDescription = "${shelf.title}, ${shelf.count}"
         val selected = shelf.id == Library.selected
         card.background = ctx.rounded(if (selected) 0x337AA2FF else Ui.SURFACE, if (selected) Ui.ACCENT else Ui.SURFACE)
         return card

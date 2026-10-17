@@ -15,8 +15,8 @@ A dual-screen, dock-aware game frontend and home screen for the AYN Thor.
    (`Nintendo GameCube`). An existing ES-DE ROMs folder works as is.
 3. Consoles with games show up on the bottom screen. Pick one and its games fill the top screen.
 
-Every system and emulator ES-DE supports on Android works (about 190 systems), including Dolphin,
-Azahar, Eden, NetherSX2, DuckStation, PPSSPP, melonDS, Vita3K, Flycast and RetroArch cores.
+Every system and emulator ES-DE supports on Android works (about 190 systems), including Dolphin
+(GameCube, Wii), Azahar (3DS), Eden and Eden Nightly (Switch), NetherSX2, DuckStation, PPSSPP, melonDS, Vita3K, Flycast and RetroArch cores.
 Bifrost lends the emulator read access to the game when it starts it, so most standalone
 emulators need no folder setup of their own.
 
@@ -30,8 +30,14 @@ Starting a game plays the insert: the case opens, the disc, cartridge or card sl
 into the console. On the Thor the case is on the top screen and the console on the bottom one, so
 the disc falls from one screen into the other. Docked, it all plays on the TV.
 
-Cases, discs, cartridges and consoles are drawn in code from the box art; no console makers'
-images or logos ship with Bifrost.
+**Select** (or a game's long-press menu, or settings) switches the shelf between the cases and the
+discs and cartridges themselves.
+
+Logos instead of labels: consoles on the bottom screen show their console art and logo, spines
+carry the system logo and the game's own logo, and the header shows logos too. System logos and
+console art come from ES-DE's [Slate theme](https://gitlab.com/es-de/themes/slate-es-de)
+(CC BY-NC-SA) and game logos from libretro-thumbnails, all downloaded on first use; nothing
+trademarked ships in the APK. Cases and discs are drawn from the box art.
 
 ### Launchers
 
@@ -54,7 +60,7 @@ images or logos ship with Bifrost.
 ### Controller
 
 - **Left / right**: along the shelf, **L2 / R2**: jump 10 games
-- **A**: play, **X / Y**: menu, **L1 / R1**: previous / next console, **Start**: settings
+- **A**: play, **X / Y**: menu, **L1 / R1**: previous / next console, **Select**: cases / discs, **Start**: settings
 - Touch: swipe the shelf, tap a spine to pull it out, tap the cover to play.
 
 ## Docked mode
@@ -106,7 +112,10 @@ Requires JDK 17 and the Android SDK (platform 35).
 
 - Systems and emulator launch commands are ES-DE's
   ([ES-DE Frontend](https://es-de.org), MIT, see `app/src/main/assets/ES-DE-LICENSE.txt`).
-- Box art comes from [libretro-thumbnails](https://github.com/libretro-thumbnails/libretro-thumbnails).
+- System logos and console art: [Slate for ES-DE](https://gitlab.com/es-de/themes/slate-es-de)
+  (CC BY-NC-SA), downloaded at runtime. Logos are trademarks of their owners.
+- SVG rendering: [AndroidSVG](https://github.com/BigBadaboom/androidsvg) (Apache 2.0).
+- Box art and game logos come from [libretro-thumbnails](https://github.com/libretro-thumbnails/libretro-thumbnails).
 
 - The `PServerBinder` transaction format was documented by
   [Thor Wayfinder](https://github.com/Thor-Wayfinder/thor-wayfinder). No code was copied.

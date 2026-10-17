@@ -6,6 +6,15 @@
     <uses-permission android:name="android.permission.REORDER_TASKS" />
 
     <queries>
+        <!-- Emulators Bifrost launches directly, visible even if one ever drops its launcher icon. -->
+        <package android:name="org.dolphinemu.dolphinemu" />
+        <package android:name="org.azahar_emu.azahar" />
+        <package android:name="dev.eden.eden_emulator" />
+        <package android:name="dev.eden.eden_emulator.nightly" />
+        <package android:name="dev.legacy.eden_emulator" />
+        <package android:name="dev.legacy.eden_emulator.nightly" />
+        <package android:name="com.miHoYo.Yuanshen" />
+        <package android:name="com.miHoYo.Yuanshen.nightly" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />

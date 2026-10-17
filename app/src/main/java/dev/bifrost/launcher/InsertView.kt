@@ -21,6 +21,8 @@ internal class InsertView(context: Context) : View(context) {
     private var mode = Mode.SINGLE
     private var look = Look.of("")
     private var case: Bitmap? = null
+    private var consoleArt: Bitmap? = null
+    private var mediaOnly = false
     private var media: Bitmap? = null
     private var from = RectF()
     private var start = 0L
@@ -35,9 +37,11 @@ internal class InsertView(context: Context) : View(context) {
     }
 
     /** [from] is where the case starts, in this view's coordinates (ignored for [Mode.BOTTOM]). */
-    fun play(game: Library.Game, mode: Mode, from: RectF?) {
+    fun play(game: Library.Game, mode: Mode, from: RectF?, mediaOnly: Boolean = false) {
         val (caseBitmap, mediaBitmap) = Faces.forInsert(context, game, (height * 0.55f).toInt().coerceAtLeast(64))
         this.mode = mode
+        this.mediaOnly = mediaOnly
+        consoleArt = Logos.get(context, game.system, Logos.Kind.CONSOLE, consoleArtHeight())
         look = Look.of(game.system)
         case = caseBitmap
         media = mediaBitmap
@@ -52,6 +56,14 @@ internal class InsertView(context: Context) : View(context) {
         visibility = INVISIBLE
         case = null
         media = null
+        consoleArt = null
+    }
+
+    private fun consoleArtHeight() = (height * 0.34f).toInt().coerceAtLeast(32)
+
+    /** Downloads/renders [system]'s console now, so it's ready when a game starts. */
+    fun prefetch(system: String) {
+        if (height > 0) Logos.get(context, system, Logos.Kind.CONSOLE, consoleArtHeight())
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -76,14 +88,24 @@ internal class InsertView(context: Context) : View(context) {
         val mediaSize = caseH * 0.62f * media.width / maxOf(media.width, media.height)
         val mediaH = mediaSize * media.height / media.width
         val inCase = caseRect.centerX()
-        val outX = caseRect.centerX() + caseW * 0.72f
+        val outX = if (mediaOnly) w * 0.5f else caseRect.centerX() + caseW * 0.72f
         // Console: rises from the bottom while the case opens.
         val consoleW = min(w * 0.6f, h * 0.9f)
         val consoleBox = RectF(w / 2 - consoleW / 2, h * 0.58f, w / 2 + consoleW / 2, h * 0.96f)
         consoleBox.offset(0f, (1 - ease(t, 0f, 650f)) * h * 0.5f)
         var slot: RectF? = null
         if (mode != Mode.TOP) {
-            slot = Render.console(canvas, look, consoleBox, ease(t, 1250f, 1450f))
+            val art = consoleArt
+            slot = if (art == null) Render.console(canvas, look, consoleBox, ease(t, 1250f, 1450f)) else {
+                // The real console, sitting on the bottom of the box; media slips in a third of the way down.
+                val scale = min(consoleBox.width() / art.width, consoleBox.height() / art.height)
+                val aw = art.width * scale
+                val ah = art.height * scale
+                val r = RectF(consoleBox.centerX() - aw / 2, consoleBox.bottom - ah, consoleBox.centerX() + aw / 2, consoleBox.bottom)
+                canvas.drawBitmap(art, null, r, paint)
+                glow(canvas, r, ease(t, 1250f, 1450f))
+                RectF(r.left + aw * 0.2f, r.top + ah * 0.3f, r.right - aw * 0.2f, r.top + ah * 0.3f)
+            }
         }
         val spin = if (look.media == Look.Media.DISC || look.media == Look.Media.MINI_DISC) t * 0.5f else 0f
 
@@ -92,6 +114,11 @@ internal class InsertView(context: Context) : View(context) {
         var mx: Float
         var my: Float
         when {
+            t < 650f && mode != Mode.BOTTOM && mediaOnly -> {
+                val k = ease(t, 0f, 500f)
+                mx = from.centerX() + (outX - from.centerX()) * k
+                my = from.centerY() + (caseRect.centerY() - from.centerY()) * k
+            }
             t < 650f && mode != Mode.BOTTOM -> {
                 mx = inCase + (outX - inCase) * ease(t, 300f, 650f)
                 my = caseRect.centerY()
@@ -116,7 +143,7 @@ internal class InsertView(context: Context) : View(context) {
         if (mode == Mode.BOTTOM && t < 650f) my = -mediaH * 2 // still on the top screen
 
         if (behindCase) drawMedia(canvas, media, mx, my, mediaSize, spin, null)
-        if (mode != Mode.BOTTOM) {
+        if (mode != Mode.BOTTOM && !mediaOnly) {
             paint.alpha = if (mode == Mode.SINGLE) (255 * (1 - ease(t, 900f, 1200f))).toInt() else 255
             canvas.drawBitmap(case, null, caseRect, paint)
             paint.alpha = 255
@@ -138,6 +165,18 @@ internal class InsertView(context: Context) : View(context) {
         matrix.postTranslate(x, y)
         c.drawBitmap(media, matrix, paint)
         c.restore()
+    }
+
+    /** The power light coming on: a soft green glow at the console's front corner. */
+    private fun glow(c: Canvas, r: RectF, lit: Float) {
+        if (lit <= 0f) return
+        val x = r.right - r.width() * 0.1f
+        val y = r.bottom - r.height() * 0.12f
+        val radius = r.width() * 0.06f
+        paint.shader = android.graphics.RadialGradient(x, y, radius, android.graphics.Color.argb((200 * lit).toInt(), 70, 230, 120), 0,
+            android.graphics.Shader.TileMode.CLAMP)
+        c.drawCircle(x, y, radius, paint)
+        paint.shader = null
     }
 
     private fun ease(t: Float, from: Float, to: Float): Float {

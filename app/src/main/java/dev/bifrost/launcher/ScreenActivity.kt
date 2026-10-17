@@ -44,8 +44,8 @@ open class ScreenActivity : Activity() {
     private var shelf: ShelfView? = null
     private lateinit var insert: InsertView
     private var shelfGrid: GridView? = null
-    private var title: TextView? = null
-    private var shelfTitle: TextView? = null
+    private var title: LogoLabel? = null
+    private var shelfTitle: LogoLabel? = null
     private var dark: Boolean? = null
     private var artVersion = -1
     private var pendingArt: File? = null
@@ -80,6 +80,7 @@ open class ScreenActivity : Activity() {
             Role.BOTTOM -> bottomLayout()
             Role.DOCK -> dockLayout()
         }
+        shelves.onArt = { shelves.notifyDataSetChanged() }
         insert = InsertView(this)
         setContentView(FrameLayout(this).apply {
             setBackgroundColor(Ui.BG)
@@ -120,19 +121,21 @@ open class ScreenActivity : Activity() {
             if (items !== tiles.items) {
                 tiles.items = items
                 grid?.setSelection(0)
-                title?.text = items.firstOrNull()?.label
+                title?.show(items.firstOrNull()?.label.orEmpty(), null)
             }
         } else {
             shelf?.games = Library.games[Library.selected].orEmpty()
             if (artVersion != Art.version) shelf?.invalidate()
         }
-        if (items.isEmpty()) title?.text = emptyHint()
+        if (items.isEmpty()) title?.show(emptyHint(), null)
         if (grid?.hasFocus() == true && !apps) shelf?.requestFocus()
         if (shelf?.hasFocus() == true && apps) grid?.requestFocus()
         artVersion = Art.version
         shelves.shelves = Library.shelves()
         shelves.notifyDataSetChanged()
-        shelfTitle?.text = Library.title(Library.selected) + if (Library.scanning) "  ·  scanning…" else ""
+        shelfTitle?.show(Library.title(Library.selected), Logos.get(this, Library.selected, Logos.Kind.LOGO, dp(26)) { refresh() })
+        shelf?.media = Library.mediaView
+        if (!apps) insert.post { insert.prefetch(Library.selected) }
 
         val off = role != Role.DOCK && Dock.docked
         if (off == dark) return
@@ -217,14 +220,12 @@ open class ScreenActivity : Activity() {
 
     private fun weighted(v: View) = v.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f) }
 
-    private fun titleView() = label(26f, bold = true).apply {
+    private fun titleView() = LogoLabel(this, 26f, Ui.TEXT, bold = true, logoHeightPx = dp(44)).apply {
         setPadding(0, dp(8), 0, dp(8))
-        maxLines = 1
         title = this
     }
 
-    private fun shelfTitleView() = label(18f, Ui.DIM).apply {
-        maxLines = 1
+    private fun shelfTitleView() = LogoLabel(this, 18f, Ui.DIM, bold = false, logoHeightPx = dp(26)).apply {
         shelfTitle = this
     }
 
@@ -232,7 +233,7 @@ open class ScreenActivity : Activity() {
     private fun browser() = FrameLayout(this).apply {
         addView(gridView())
         addView(ShelfView(this@ScreenActivity).apply {
-            onSelect = { title?.text = it.label }
+            onSelect = { title?.showFile(it.label, Art.gameLogo(this@ScreenActivity, it)) }
             onActivate = ::insertGame
             onMenu = { tileMenu(this, it) }
             shelf = this
@@ -246,7 +247,7 @@ open class ScreenActivity : Activity() {
         val bottom = Dock.bottom()?.takeIf { role == Role.TOP && !Dock.docked }?.let { open[it.displayId] }
         val at = IntArray(2).also(insert::getLocationInWindow)
         val from = shelf!!.coverRectInWindow().apply { offset(-at[0].toFloat(), -at[1].toFloat()) }
-        insert.play(game, if (bottom != null) InsertView.Mode.TOP else InsertView.Mode.SINGLE, from)
+        insert.play(game, if (bottom != null) InsertView.Mode.TOP else InsertView.Mode.SINGLE, from, mediaOnly = Library.mediaView)
         bottom?.insert?.play(game, InsertView.Mode.BOTTOM, null)
         App.main.postDelayed({ Library.launch(this, game, displayId) }, InsertView.TOTAL)
     }
@@ -265,7 +266,7 @@ open class ScreenActivity : Activity() {
         }
         onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                title?.text = tiles.getItem(position).label
+                title?.show(tiles.getItem(position).label, null)
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -320,6 +321,7 @@ open class ScreenActivity : Activity() {
             is Library.Game -> {
                 val art = Art.game(this@ScreenActivity, tile)
                 item("Launch with…") { chooseEmulator(tile.system, tile) }
+                item(if (Library.mediaView) "Show cases" else "Show discs & cartridges") { Library.mediaView = !Library.mediaView }
                 item("Set artwork…") { pickArt(art) }
                 item("Download artwork") { scrape(tile) }
                 if (art.exists()) item("Remove artwork") { art.delete(); Art.changed() }
@@ -403,12 +405,12 @@ open class ScreenActivity : Activity() {
         }.start()
     }
 
-    // ── controller: A opens, X/Y menu, L1/R1 switch console, Start settings ─
+    // ── controller: A opens, X/Y menu, L1/R1 console, Select cases/discs, Start settings ─
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val key = event.keyCode
         if (key !in setOf(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_BUTTON_Y,
-                KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_START)) {
+                KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_BUTTON_SELECT)) {
             return super.dispatchKeyEvent(event)
         }
         if (event.action != KeyEvent.ACTION_UP) return true
@@ -416,6 +418,7 @@ open class ScreenActivity : Activity() {
             KeyEvent.KEYCODE_BUTTON_L1 -> Library.cycle(-1)
             KeyEvent.KEYCODE_BUTTON_R1 -> Library.cycle(1)
             KeyEvent.KEYCODE_BUTTON_START -> startActivity(Intent(this, SettingsActivity::class.java))
+            KeyEvent.KEYCODE_BUTTON_SELECT -> Library.mediaView = !Library.mediaView
             else -> {
                 val focus = currentFocus
                 val s = focus as? ShelfView

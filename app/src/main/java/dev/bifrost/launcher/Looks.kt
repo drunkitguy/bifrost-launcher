@@ -220,10 +220,10 @@ internal object Render {
     }
 
     /**
-     * A case's spine as it stands on a shelf: [w] wide, [h] tall. System name at the top,
-     * title running down, and for Wii the colored corner.
+     * A case's spine as it stands on a shelf: [w] wide, [h] tall. The system logo at the top, the
+     * game's logo running down (both fall back to text until downloaded), and for Wii the colored corner.
      */
-    fun spine(look: Look, title: String, label: String, w: Int, h: Int): Bitmap {
+    fun spine(look: Look, title: String, label: String, systemLogo: Bitmap?, gameLogo: Bitmap?, w: Int, h: Int): Bitmap {
         val out = Bitmap.createBitmap(w.coerceAtLeast(2), h, Bitmap.Config.ARGB_8888)
         val c = Canvas(out)
         val bg = if (look.plastic) look.caseColor else darker(look.accent, 0.55f)
@@ -232,7 +232,8 @@ internal object Render {
             floatArrayOf(0f, 0.25f, 0.7f, 1f), Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
         paint.shader = null
-        val bannerLen = h * 0.12f
+        val logoLen = systemLogo?.let { min(w * 0.62f * it.width / it.height, h * 0.2f) } ?: 0f
+        val bannerLen = maxOf(h * 0.12f, logoLen + h * 0.04f)
         look.banner?.takeIf { it != bg }?.let {
             paint.color = it
             c.drawRect(0f, 0f, w.toFloat(), bannerLen, paint)
@@ -244,18 +245,32 @@ internal object Render {
         val ink = if (luma(look.banner ?: bg) > 0.55f) 0xFF4A4D55.toInt() else Color.WHITE
         val titleInk = if (luma(bg) > 0.55f) 0xFF15161A.toInt() else Color.WHITE
         val text = TextPaint(Paint.ANTI_ALIAS_FLAG)
-        // Both read top to bottom, like real spines.
+        // Everything reads top to bottom, like real spines: in this rotated canvas x runs down the
+        // spine and the spine's width is y from -w to 0.
         c.save()
         c.rotate(90f)
-        text.color = ink
-        text.textSize = w * 0.5f
-        text.isFakeBoldText = true
-        c.drawText(label, h * 0.025f, -w * 0.32f, text)
-        text.color = titleInk
-        text.textSize = w * 0.42f
-        val room = h * 0.8f - bannerLen
-        val shown = android.text.TextUtils.ellipsize(title.uppercase(), text, room, android.text.TextUtils.TruncateAt.END)
-        c.drawText(shown, 0, shown.length, bannerLen + h * 0.03f, -w * 0.34f, text)
+        if (systemLogo != null) {
+            val across = logoLen * systemLogo.height / systemLogo.width
+            c.drawBitmap(systemLogo, null, RectF(h * 0.02f, -w / 2f - across / 2, h * 0.02f + logoLen, -w / 2f + across / 2), paint)
+        } else {
+            text.color = ink
+            text.textSize = w * 0.5f
+            text.isFakeBoldText = true
+            c.drawText(label, h * 0.025f, -w * 0.32f, text)
+        }
+        val start = bannerLen + h * 0.03f
+        val room = h * 0.84f - start
+        if (gameLogo != null) {
+            val along = min(room, w * 0.8f * gameLogo.width / gameLogo.height)
+            val across = along * gameLogo.height / gameLogo.width
+            c.drawBitmap(gameLogo, null, RectF(start, -w / 2f - across / 2, start + along, -w / 2f + across / 2), paint)
+        } else {
+            text.color = titleInk
+            text.textSize = w * 0.42f
+            text.isFakeBoldText = true
+            val shown = android.text.TextUtils.ellipsize(title.uppercase(), text, room, android.text.TextUtils.TruncateAt.END)
+            c.drawText(shown, 0, shown.length, start, -w * 0.34f, text)
+        }
         c.restore()
         return out
     }
@@ -414,6 +429,8 @@ internal object Render {
     }
 
     fun darker(color: Int, f: Float) = Color.argb(Color.alpha(color), (Color.red(color) * f).toInt(), (Color.green(color) * f).toInt(), (Color.blue(color) * f).toInt())
+
+    fun isLight(color: Int) = luma(color) > 0.55f
 
     private fun luma(color: Int) = (0.3f * Color.red(color) + 0.59f * Color.green(color) + 0.11f * Color.blue(color)) / 255f
 }

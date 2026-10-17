@@ -25,6 +25,7 @@ internal object Art {
     }
 
     fun game(ctx: Context, g: Library.Game) = File(ctx.filesDir, "art/${g.system}/${g.baseName}.img")
+    fun gameLogo(ctx: Context, g: Library.Game) = File(ctx.filesDir, "art/${g.system}/${g.baseName}.logo")
     fun system(ctx: Context, id: String) = File(ctx.filesDir, "art/_systems/$id.img")
 
     /** Copies a picked image in as [target]. */
@@ -114,20 +115,29 @@ internal object Scraper {
     /** Downloads box art for [game]. Blocking; call off the main thread. */
     fun scrape(ctx: Context, game: Library.Game): Boolean {
         val playlist = playlists[game.system] ?: return false
-        val dir = BASE + playlist.replace(" ", "%20") + "/Named_Boxarts/"
-        val index = synchronized(indexes) { indexes[playlist] } ?: runCatching { parseIndex(get(dir).decodeToString()) }
-            .getOrNull()?.also { synchronized(indexes) { indexes[playlist] = it } } ?: return false
+        val box = Art.game(ctx, game)
+        if (!box.exists()) fetch(playlist, "Named_Boxarts", game, box)
+        Art.gameLogo(ctx, game).let { if (!it.exists()) fetch(playlist, "Named_Logos", game, it) }
+        return box.exists()
+    }
+
+    private fun fetch(playlist: String, folder: String, game: Library.Game, target: File): Boolean {
+        val dir = BASE + playlist.replace(" ", "%20") + "/$folder/"
+        // A failed listing is remembered as empty, so a missing folder costs one request, not one per game.
+        val index = synchronized(indexes) { indexes[dir] }
+            ?: (runCatching { parseIndex(get(dir).decodeToString()) }.getOrNull() ?: emptyList()).also { synchronized(indexes) { indexes[dir] = it } }
         val href = bestMatch(game.baseName, index) ?: return false
         val bytes = runCatching { get(dir + href) }.getOrNull() ?: return false
-        val target = Art.game(ctx, game)
         target.parentFile?.mkdirs()
         target.writeBytes(bytes)
         return true
     }
 
-    /** Scrapes every game that has no art yet; [progress] gets "done/total". */
+    /** Scrapes box art and logos for every game missing either; [progress] gets done, total, box art found. */
     fun scrapeMissing(ctx: Context, progress: (Int, Int, Int) -> Unit) {
-        val todo = Library.games.values.flatten().filter { it.system in playlists && !Art.game(ctx, it).exists() }
+        val todo = Library.games.values.flatten().filter {
+            it.system in playlists && (!Art.game(ctx, it).exists() || !Art.gameLogo(ctx, it).exists())
+        }
         var found = 0
         todo.forEachIndexed { i, game ->
             if (scrape(ctx, game)) found++

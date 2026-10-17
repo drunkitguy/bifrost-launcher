@@ -30,6 +30,14 @@ internal object Library {
 
     val tree: Uri? get() = App.prefs.getString(TREE, null)?.let(Uri::parse)
 
+    /** Browse the discs and cartridges themselves instead of their cases. */
+    var mediaView: Boolean
+        get() = App.prefs.getBoolean("media_view", false)
+        set(value) {
+            App.prefs.edit().putBoolean("media_view", value).apply()
+            App.changed()
+        }
+
     var selected: String
         get() = App.prefs.getString(SHELF, null)?.takeIf { it == APPS || it in games } ?: shelves().first().id
         set(value) {

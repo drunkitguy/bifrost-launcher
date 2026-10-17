@@ -15,12 +15,17 @@ class SettingsActivity : Activity() {
     private lateinit var folder: TextView
     private lateinit var art: TextView
     private lateinit var hardOff: Button
+    private lateinit var view: Button
     private val listener: () -> Unit = { render() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         folder = label(15f, Ui.DIM)
         art = label(15f, Ui.DIM)
+        view = button("") {
+            Library.mediaView = !Library.mediaView
+            render()
+        }
         hardOff = button("") {
             Dock.hardOff = !Dock.hardOff
             render()
@@ -39,6 +44,7 @@ class SettingsActivity : Activity() {
                 button("Rescan games") { Library.rescan(this@SettingsActivity) },
                 button("Download missing artwork") { scrapeAll() },
                 art,
+                view,
                 label(14f, Ui.DIM).apply { text = HELP },
                 section("Docking"),
                 hardOff,
@@ -68,6 +74,7 @@ class SettingsActivity : Activity() {
             else -> "ROMs folder: " + docIdToPath(DocumentsContract.getTreeDocumentId(tree)) +
                 "\n$count games in ${Library.games.size} systems" + if (Library.scanning) " · scanning…" else ""
         }
+        view.text = "Game shelf shows: " + if (Library.mediaView) "discs & cartridges" else "cases"
         hardOff.text = "Docked: built-in screens " + if (Dock.hardOff) "powered off (root)" else "black only"
     }
 
@@ -121,6 +128,7 @@ class SettingsActivity : Activity() {
                 "n64, dreamcast, gba, snes…) or by full name (\"Nintendo GameCube\"). Long-press a console to pick its " +
                 "emulator, a game to pick one just for it. Custom launchers: put bifrost_systems.xml and " +
                 "bifrost_find_rules.xml (ES-DE format) in the ROMs folder. Artwork comes from the libretro thumbnail " +
-                "server; long-press a game or console to use your own image."
+                "server; long-press a game or console to use your own image. System logos and console art: Slate " +
+                "theme for ES-DE (CC BY-NC-SA), downloaded on first use; logos are their owners' trademarks."
     }
 }

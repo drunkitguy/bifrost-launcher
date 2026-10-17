@@ -11,8 +11,8 @@ android {
         applicationId = "dev.bifrost.launcher"
         minSdk = 31
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
     }
 
     // Committed debug key: every CI build has the same signature, so updates install over each other.
@@ -28,5 +28,6 @@ android {
 }
 
 dependencies {
+    implementation("com.caverock:androidsvg-aar:1.4")
     testImplementation("junit:junit:4.13.2")
 }
