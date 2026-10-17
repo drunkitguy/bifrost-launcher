@@ -4,7 +4,7 @@ A dual-screen, dock-aware game frontend and home screen for the AYN Thor.
 
 | Mode | Top screen | Bottom screen | External display |
 |------|-----------|---------------|------------------|
-| Handheld | Box art of the selected console's games | Consoles (GameCube, Wii, 3DS, ...), Android apps, clock and status | n/a |
+| Handheld | The selected console's games, spine-out on a shelf | Consoles (GameCube, Wii, 3DS, ...), Android apps, clock and status | n/a |
 | Docked | Off | Off | Everything: consoles, games, clock, status |
 
 ## Game library
@@ -19,6 +19,19 @@ Every system and emulator ES-DE supports on Android works (about 190 systems), i
 Azahar, Eden, NetherSX2, DuckStation, PPSSPP, melonDS, Vita3K, Flycast and RetroArch cores.
 Bifrost lends the emulator read access to the game when it starts it, so most standalone
 emulators need no folder setup of their own.
+
+### The shelf
+
+Games stand spine-out on a shelf, like a real collection: Wii cases are white with the colored
+corner, PS2 black, Switch red, N64 and SNES boxes cardboard, and so on. The selected game slides
+out and turns to show its cover.
+
+Starting a game plays the insert: the case opens, the disc, cartridge or card slides out and drops
+into the console. On the Thor the case is on the top screen and the console on the bottom one, so
+the disc falls from one screen into the other. Docked, it all plays on the TV.
+
+Cases, discs, cartridges and consoles are drawn in code from the box art; no console makers'
+images or logos ship with Bifrost.
 
 ### Launchers
 
@@ -40,7 +53,9 @@ emulators need no folder setup of their own.
 
 ### Controller
 
-- **A**: open, **X / Y**: menu, **L1 / R1**: previous / next console, **Start**: settings
+- **Left / right**: along the shelf, **L2 / R2**: jump 10 games
+- **A**: play, **X / Y**: menu, **L1 / R1**: previous / next console, **Start**: settings
+- Touch: swipe the shelf, tap a spine to pull it out, tap the cover to play.
 
 ## Docked mode
 

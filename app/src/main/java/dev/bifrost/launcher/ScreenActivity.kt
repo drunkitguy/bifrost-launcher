@@ -41,6 +41,8 @@ open class ScreenActivity : Activity() {
     private lateinit var cover: View
     private var displayId = Display.INVALID_DISPLAY
     private var grid: GridView? = null
+    private var shelf: ShelfView? = null
+    private lateinit var insert: InsertView
     private var shelfGrid: GridView? = null
     private var title: TextView? = null
     private var shelfTitle: TextView? = null
@@ -78,14 +80,21 @@ open class ScreenActivity : Activity() {
             Role.BOTTOM -> bottomLayout()
             Role.DOCK -> dockLayout()
         }
+        insert = InsertView(this)
         setContentView(FrameLayout(this).apply {
             setBackgroundColor(Ui.BG)
             addView(content)
+            addView(insert)
             addView(cover)
         })
-        (grid ?: shelfGrid)?.requestFocus()
+        (shelf ?: shelfGrid)?.requestFocus()
         App.listeners += listener
         refresh()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::insert.isInitialized) insert.stop()
     }
 
     override fun onDestroy() {
@@ -103,15 +112,23 @@ open class ScreenActivity : Activity() {
             finish()
             return
         }
+        val apps = Library.selected == Library.APPS
         val items = Library.tiles()
-        if (items !== tiles.items || title?.text.isNullOrEmpty()) {
-            tiles.items = items
-            grid?.columnWidth = dp(if (Library.selected == Library.APPS) 112 else 148)
-            grid?.setSelection(0)
-            title?.text = items.firstOrNull()?.label ?: emptyHint()
-        } else if (artVersion != Art.version) {
-            tiles.notifyDataSetChanged()
+        grid?.visibility = if (apps) View.VISIBLE else View.GONE
+        shelf?.visibility = if (apps) View.GONE else View.VISIBLE
+        if (apps) {
+            if (items !== tiles.items) {
+                tiles.items = items
+                grid?.setSelection(0)
+                title?.text = items.firstOrNull()?.label
+            }
+        } else {
+            shelf?.games = Library.games[Library.selected].orEmpty()
+            if (artVersion != Art.version) shelf?.invalidate()
         }
+        if (items.isEmpty()) title?.text = emptyHint()
+        if (grid?.hasFocus() == true && !apps) shelf?.requestFocus()
+        if (shelf?.hasFocus() == true && apps) grid?.requestFocus()
         artVersion = Art.version
         shelves.shelves = Library.shelves()
         shelves.notifyDataSetChanged()
@@ -156,7 +173,7 @@ open class ScreenActivity : Activity() {
     private fun topLayout() = column(
         row(clock(22f), spacer(16), shelfTitleView(), spacer(), StatusView(this, multiline = false, brief = true)),
         titleView(),
-        weighted(gridView()),
+        weighted(browser()),
     )
 
     /** Bottom screen: the consoles. */
@@ -174,7 +191,7 @@ open class ScreenActivity : Activity() {
         weighted(row(
             shelfGridView(columns = 1).apply { layoutParams = LinearLayout.LayoutParams(dp(280), MATCH_PARENT) },
             spacer(16),
-            column(titleView(), weighted(gridView())).apply {
+            column(titleView(), weighted(browser())).apply {
                 setPadding(0, 0, 0, 0)
                 layoutParams = LinearLayout.LayoutParams(0, MATCH_PARENT, 1f)
             },
@@ -211,10 +228,33 @@ open class ScreenActivity : Activity() {
         shelfTitle = this
     }
 
+    /** Games on a shelf, or the Android apps grid. */
+    private fun browser() = FrameLayout(this).apply {
+        addView(gridView())
+        addView(ShelfView(this@ScreenActivity).apply {
+            onSelect = { title?.text = it.label }
+            onActivate = ::insertGame
+            onMenu = { tileMenu(this, it) }
+            shelf = this
+        })
+    }
+
+    /** Pull the disc out and put it in the console, then start the game. */
+    private fun insertGame(game: Library.Game) {
+        if (insert.running) return
+        if (Library.chosen(this, game) == null) return Library.launch(this, game, displayId) // explains what's missing
+        val bottom = Dock.bottom()?.takeIf { role == Role.TOP && !Dock.docked }?.let { open[it.displayId] }
+        val at = IntArray(2).also(insert::getLocationInWindow)
+        val from = shelf!!.coverRectInWindow().apply { offset(-at[0].toFloat(), -at[1].toFloat()) }
+        insert.play(game, if (bottom != null) InsertView.Mode.TOP else InsertView.Mode.SINGLE, from)
+        bottom?.insert?.play(game, InsertView.Mode.BOTTOM, null)
+        App.main.postDelayed({ Library.launch(this, game, displayId) }, InsertView.TOTAL)
+    }
+
     private fun gridView() = GridView(this).apply {
         adapter = tiles
         numColumns = GridView.AUTO_FIT
-        columnWidth = dp(148)
+        columnWidth = dp(112)
         stretchMode = GridView.STRETCH_COLUMN_WIDTH
         verticalSpacing = dp(8)
         setSelector(rounded(0x337AA2FF, Ui.ACCENT))
@@ -266,7 +306,7 @@ open class ScreenActivity : Activity() {
     // ── opening things, menus ────────────────────────────────────────────
 
     private fun launch(tile: Tile) = when (tile) {
-        is Library.Game -> Library.launch(this, tile, displayId)
+        is Library.Game -> insertGame(tile)
         is Apps.Entry -> Apps.launch(this, tile, displayId)
         else -> Unit
     }
@@ -378,6 +418,11 @@ open class ScreenActivity : Activity() {
             KeyEvent.KEYCODE_BUTTON_START -> startActivity(Intent(this, SettingsActivity::class.java))
             else -> {
                 val focus = currentFocus
+                val s = focus as? ShelfView
+                if (s != null) {
+                    if (key == KeyEvent.KEYCODE_BUTTON_A) s.activate() else s.current?.let { tileMenu(s, it) }
+                    return true
+                }
                 val list = focus as? GridView
                 val view = list?.selectedView
                 val position = list?.selectedItemPosition ?: -1

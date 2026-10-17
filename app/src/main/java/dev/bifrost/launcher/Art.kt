@@ -41,7 +41,7 @@ internal object Images {
     private val cache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).toInt()) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
-    private val pool = Executors.newFixedThreadPool(3)
+    val pool = Executors.newFixedThreadPool(3)
 
     fun load(view: ImageView, file: File, sizePx: Int, fallback: Drawable?) {
         val key = "${file.path}@${file.lastModified()}"
@@ -56,7 +56,7 @@ internal object Images {
         }
     }
 
-    private fun decode(file: File, sizePx: Int): Bitmap? {
+    fun decode(file: File, sizePx: Int): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, bounds)
         var sample = 1
