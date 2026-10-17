@@ -1,0 +1,43 @@
+MIT License
+
+Copyright (c) 2026 bifrost-launcher contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--------------------------------------------------------------------------------
+
+THIRD-PARTY CODE
+
+The above covers this repository's own contributions: the build scripts, tests,
+generators, documentation, and the driconf profile data.
+
+It does NOT represent sole authorship of the code these patches produce.
+
+  * Mesa (including the Turnip Vulkan driver) is licensed MIT and is copyright
+    its many contributors. See https://gitlab.freedesktop.org/mesa/mesa and the
+    licence headers in the upstream tree. Any driver built from this repository
+    is overwhelmingly Mesa's work.
+
+  * Patches 0201 and 0203 embed and redistribute upstream Mesa merge request
+    !39751 (approximately 46 KB of C), which is NOT this project's work. This
+    project's own contribution to those arms is a single boolean literal.
+
+See ATTRIBUTION.md for full provenance, including an unresolved gap: we were
+unable to determine the name of MR !39751's author and have used a visible
+synthetic placeholder rather than guess. If that is you, please open an issue.
