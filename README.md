@@ -40,7 +40,7 @@ docked), press the power button twice. Android powers the panels back on when it
 
 ## Install
 
-1. Download the APK from the latest **build** workflow run (Actions tab, `bifrost-launcher-apk`).
+1. Download `bifrost-launcher.apk` from the [latest release](../../releases/latest).
 2. Install it, press Home, and choose **Bifrost** as the default home app
    (or use the **Home app** button).
 
