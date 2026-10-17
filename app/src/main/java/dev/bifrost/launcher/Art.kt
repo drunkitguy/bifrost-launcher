@@ -3,10 +3,8 @@ package dev.bifrost.launcher
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.util.LruCache
-import android.widget.ImageView
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -26,6 +24,8 @@ internal object Art {
 
     fun game(ctx: Context, g: Library.Game) = File(ctx.filesDir, "art/${g.system}/${g.baseName}.img")
     fun gameLogo(ctx: Context, g: Library.Game) = File(ctx.filesDir, "art/${g.system}/${g.baseName}.logo")
+    fun title(ctx: Context, g: Library.Game) = File(ctx.filesDir, "art/${g.system}/${g.baseName}.title")
+    fun hero(ctx: Context, g: Library.Game) = File(ctx.filesDir, "art/${g.system}/${g.baseName}.hero")
     fun system(ctx: Context, id: String) = File(ctx.filesDir, "art/_systems/$id.img")
 
     /** Copies a picked image in as [target]. */
@@ -43,19 +43,6 @@ internal object Images {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
     val pool = Executors.newFixedThreadPool(3)
-
-    fun load(view: ImageView, file: File, sizePx: Int, fallback: Drawable?) {
-        val key = "${file.path}@${file.lastModified()}"
-        view.tag = key
-        cache.get(key)?.let { view.setImageBitmap(it); return }
-        view.setImageDrawable(fallback)
-        if (!file.exists()) return
-        pool.execute {
-            val bitmap = decode(file, sizePx) ?: return@execute
-            cache.put(key, bitmap)
-            view.post { if (view.tag == key) view.setImageBitmap(bitmap) }
-        }
-    }
 
     fun decode(file: File, sizePx: Int): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -114,10 +101,12 @@ internal object Scraper {
 
     /** Downloads box art for [game]. Blocking; call off the main thread. */
     fun scrape(ctx: Context, game: Library.Game): Boolean {
-        val playlist = playlists[game.system] ?: return false
+        Art.hero(ctx, game).let { if (!it.exists()) SteamGridDb.hero(game, it) }
+        val playlist = playlists[game.system] ?: return Art.hero(ctx, game).exists()
         val box = Art.game(ctx, game)
         if (!box.exists()) fetch(playlist, "Named_Boxarts", game, box)
         Art.gameLogo(ctx, game).let { if (!it.exists()) fetch(playlist, "Named_Logos", game, it) }
+        Art.title(ctx, game).let { if (!it.exists()) fetch(playlist, "Named_Titles", game, it) }
         return box.exists()
     }
 
@@ -136,7 +125,8 @@ internal object Scraper {
     /** Scrapes box art and logos for every game missing either; [progress] gets done, total, box art found. */
     fun scrapeMissing(ctx: Context, progress: (Int, Int, Int) -> Unit) {
         val todo = Library.games.values.flatten().filter {
-            it.system in playlists && (!Art.game(ctx, it).exists() || !Art.gameLogo(ctx, it).exists())
+            (it.system in playlists && (!Art.game(ctx, it).exists() || !Art.gameLogo(ctx, it).exists() || !Art.title(ctx, it).exists())) ||
+                (SteamGridDb.key.isNotEmpty() && !Art.hero(ctx, it).exists())
         }
         var found = 0
         todo.forEachIndexed { i, game ->
@@ -153,6 +143,44 @@ internal object Scraper {
         try {
             check(c.responseCode == 200) { "HTTP ${c.responseCode}" }
             return c.inputStream.use { it.readBytes() }
+        } finally {
+            c.disconnect()
+        }
+    }
+}
+
+/**
+ * Wide fan art ("heroes") from SteamGridDB, like Cocoon's top screen. Needs the user's own free
+ * API key (Settings), so it is skipped without one.
+ */
+internal object SteamGridDb {
+    private const val API = "https://www.steamgriddb.com/api/v2/"
+
+    var key: String
+        get() = App.prefs.getString("sgdb_key", "").orEmpty()
+        set(value) = App.prefs.edit().putString("sgdb_key", value.trim()).apply()
+
+    fun hero(game: Library.Game, target: File): Boolean {
+        val key = key.takeIf { it.isNotEmpty() } ?: return false
+        return runCatching {
+            val search = org.json.JSONObject(get(API + "search/autocomplete/" + java.net.URLEncoder.encode(game.label, "UTF-8").replace("+", "%20"), key))
+            val id = search.getJSONArray("data").getJSONObject(0).getLong("id")
+            val heroes = org.json.JSONObject(get(API + "heroes/game/$id", key)).getJSONArray("data")
+            val url = heroes.getJSONObject(0).getString("url")
+            target.parentFile?.mkdirs()
+            target.writeBytes(URL(url).readBytes())
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun get(url: String, key: String): String {
+        val c = URL(url).openConnection() as HttpURLConnection
+        c.connectTimeout = 15_000
+        c.readTimeout = 20_000
+        c.setRequestProperty("Authorization", "Bearer $key")
+        try {
+            check(c.responseCode == 200) { "HTTP ${c.responseCode}" }
+            return c.inputStream.use { it.readBytes().decodeToString() }
         } finally {
             c.disconnect()
         }

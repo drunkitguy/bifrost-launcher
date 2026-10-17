@@ -15,7 +15,6 @@ class SettingsActivity : Activity() {
     private lateinit var folder: TextView
     private lateinit var art: TextView
     private lateinit var hardOff: Button
-    private lateinit var view: Button
     private lateinit var theme: Button
     private val listener: () -> Unit = { render() }
 
@@ -23,10 +22,6 @@ class SettingsActivity : Activity() {
         super.onCreate(savedInstanceState)
         folder = label(15f, Ui.DIM)
         art = label(15f, Ui.DIM)
-        view = button("") {
-            Library.mediaView = !Library.mediaView
-            render()
-        }
         theme = button("") { chooseTheme() }
         hardOff = button("") {
             Dock.hardOff = !Dock.hardOff
@@ -46,7 +41,18 @@ class SettingsActivity : Activity() {
                 button("Rescan games") { Library.rescan(this@SettingsActivity) },
                 button("Download missing artwork") { scrapeAll() },
                 art,
-                view,
+                label(14f, Ui.DIM).apply { text = "SteamGridDB API key (optional, free at steamgriddb.com): wide fan art for the top screen" },
+                android.widget.EditText(this@SettingsActivity).apply {
+                    setText(SteamGridDb.key)
+                    hint = "Paste your key"
+                    setSingleLine()
+                    setTextColor(Ui.TEXT)
+                    addTextChangedListener(object : android.text.TextWatcher {
+                        override fun afterTextChanged(e: android.text.Editable?) { SteamGridDb.key = e?.toString().orEmpty() }
+                        override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                        override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                    })
+                },
                 label(14f, Ui.DIM).apply { text = HELP },
                 section("Look"),
                 theme,
@@ -80,7 +86,6 @@ class SettingsActivity : Activity() {
                 "\n$count games in ${Library.games.size} systems" + if (Library.scanning) " · scanning…" else ""
         }
         theme.text = "Theme: ${Theme.current.name}"
-        view.text = "Game shelf shows: " + if (Library.mediaView) "discs & cartridges" else "cases"
         hardOff.text = "Docked: built-in screens " + if (Dock.hardOff) "powered off (root)" else "black only"
     }
 

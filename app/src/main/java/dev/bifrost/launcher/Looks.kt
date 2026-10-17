@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
-import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
@@ -52,7 +51,7 @@ internal class Look(
         private val box = Look(0.72f, 0xFFDAD4C4.toInt(), false, media = Media.CART, mediaColor = GREY, console = Console.TOP_SLOT, consoleColor = 0xFF8D8F96.toInt())
 
         private val looks = mapOf(
-            "gc" to Look(0.71f, BLACK, true, media = Media.MINI_DISC, mediaColor = 0xFFD8DCE2.toInt(), console = Console.CUBE, consoleColor = 0xFF4B3F8F.toInt()),
+            "gc" to Look(0.71f, BLACK, true, media = Media.MINI_DISC, mediaColor = 0xFFC8CCD3.toInt(), console = Console.CUBE, consoleColor = 0xFF4B3F8F.toInt()),
             "wii" to Look(0.71f, WHITE, true, banner = WHITE, bannerText = "Wii", media = Media.DISC, mediaColor = 0xFFF2F3F5.toInt(), console = Console.SLIM, consoleColor = WHITE, accent = 0xFF35A7E8.toInt(), cornerStripe = true),
             "wiiu" to Look(0.71f, 0xFF1E8FD6.toInt(), true, banner = 0xFF1E8FD6.toInt(), bannerText = "Wii U", media = Media.DISC, mediaColor = 0xFFE9ECF0.toInt(), console = Console.SLIM, consoleColor = BLACK, accent = 0xFF1E8FD6.toInt()),
             "ps2" to Look(0.71f, BLACK, true, banner = BLACK, bannerText = "PS2", media = Media.DISC, mediaColor = 0xFF3A55C8.toInt(), console = Console.SLIM, consoleColor = 0xFF1C1D22.toInt(), accent = 0xFF3A55C8.toInt()),
@@ -82,6 +81,20 @@ internal class Look(
         )
 
         fun of(system: String): Look = looks[system] ?: dvdBlack
+
+        /** The flat color a console's top screen sits on, as in Cocoon. */
+        fun heroColor(system: String): Int = heroColors[system] ?: of(system).let { look ->
+            val banner = look.banner?.takeIf { !Render.isLight(it) && Color.red(it) + Color.green(it) + Color.blue(it) > 120 }
+            (banner ?: look.accent).let { if (Render.isLight(it)) Render.darker(it, 0.8f) else it }
+        }
+
+        private val heroColors = mapOf(
+            "gc" to 0xFF5A55E6.toInt(), "switch" to 0xFFE8202E.toInt(), "n3ds" to 0xFFB8CBE6.toInt(), "nds" to 0xFFC9CDD4.toInt(),
+            "wii" to 0xFFD9EEF8.toInt(), "wiiu" to 0xFF1E8FD6.toInt(), "ps2" to 0xFF1D2B6E.toInt(), "psx" to 0xFF8B8F98.toInt(),
+            "psp" to 0xFF2B2D33.toInt(), "ps3" to 0xFF161A24.toInt(), "n64" to 0xFF2E7D32.toInt(), "snes" to 0xFF6B4FB0.toInt(),
+            "gba" to 0xFF4E3A9C.toInt(), "dreamcast" to 0xFFF26B1D.toInt(), "genesis" to 0xFF1C1D20.toInt(), "megadrive" to 0xFF1C1D20.toInt(),
+            Library.APPS to 0xFF2E8B57.toInt(),
+        )
     }
 
     fun with(
@@ -95,93 +108,9 @@ internal class Look(
     ) = Look(ratio, caseColor, plastic, banner, bannerText, media, mediaColor, console, consoleColor, accent, depth, cornerStripe)
 }
 
-/** Draws cases, media and consoles. Everything is code-drawn: no trademarked images ship. */
+/** Draws discs, cartridges and cards from the box art; nothing trademarked ships. */
 internal object Render {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-
-    /** Case width for [h], following the cover art's shape when there is art. */
-    fun caseWidth(look: Look, cover: Bitmap?, h: Int, withSpine: Boolean = true): Int {
-        val ratio = cover?.let { (it.width.toFloat() / it.height).coerceIn(0.5f, 1.6f) } ?: look.ratio
-        val spine = if (look.plastic && withSpine) 0.07f else 0f
-        return (h * ratio * (1 + spine)).toInt().coerceAtLeast(1)
-    }
-
-    /** The case, standing on a glossy floor: [h] tall, then a fading reflection [reflect] tall. */
-    /** The case's front. [withSpine] false when a 3D box draws the spine as its own face. */
-    fun case(look: Look, cover: Bitmap?, title: String, h: Int, reflect: Int = 0, withSpine: Boolean = true): Bitmap {
-        val w = caseWidth(look, cover, h, withSpine)
-        val out = Bitmap.createBitmap(w, h + reflect, Bitmap.Config.ARGB_8888)
-        val c = Canvas(out)
-        drawCase(c, look, cover, title, w, h, withSpine)
-        if (reflect > 0) {
-            val flip = Matrix().apply { setScale(1f, -1f); postTranslate(0f, 2f * h) }
-            c.save()
-            c.clipRect(0, h, w, h + reflect)
-            c.drawBitmap(out, flip, paint)
-            c.restore()
-            val fade = Paint().apply {
-                shader = LinearGradient(0f, h.toFloat(), 0f, (h + reflect).toFloat(), 0x55000000, 0, Shader.TileMode.CLAMP)
-                xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
-            }
-            c.drawRect(0f, h.toFloat(), w.toFloat(), (h + reflect).toFloat(), fade)
-        }
-        return out
-    }
-
-    private fun drawCase(c: Canvas, look: Look, cover: Bitmap?, title: String, w: Int, h: Int, withSpine: Boolean) {
-        val r = w * 0.03f
-        val body = RectF(0f, 0f, w.toFloat(), h.toFloat())
-        if (!look.plastic) {
-            // Cardboard box: the art is the box; a printed edge and a little wear.
-            art(c, cover, title, look, body, r * 0.4f)
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = w * 0.012f
-            paint.color = 0x55000000
-            c.drawRoundRect(body, r * 0.4f, r * 0.4f, paint)
-            paint.style = Paint.Style.FILL
-            gloss(c, body, 0x26)
-            return
-        }
-        paint.color = look.caseColor
-        c.drawRoundRect(body, r, r, paint)
-        // Spine with grip ridges.
-        val spine = if (withSpine) w * 0.065f else 0f
-        if (withSpine) {
-            paint.shader = LinearGradient(0f, 0f, spine, 0f, darker(look.caseColor, 0.55f), look.caseColor, Shader.TileMode.CLAMP)
-            c.drawRoundRect(RectF(0f, 0f, spine + r, h.toFloat()), r, r, paint)
-            paint.shader = null
-            paint.color = darker(look.caseColor, 0.4f)
-            val ridges = 3
-            for (i in 1..ridges) {
-                val x = spine * i / (ridges + 1)
-                c.drawRect(x - 0.6f, h * 0.06f, x + 0.6f, h * 0.94f, paint)
-            }
-        }
-        // Cover under the clear sleeve, with an optional top banner.
-        val pad = w * 0.035f
-        val sleeve = RectF(spine + pad * 0.6f, pad, w - pad, h - pad)
-        val banner = look.banner
-        val artRect = if (banner != null) {
-            val bh = sleeve.height() * 0.085f
-            paint.color = banner
-            c.drawRect(sleeve.left, sleeve.top, sleeve.right, sleeve.top + bh, paint)
-            look.bannerText?.let { text ->
-                paint.color = if (luma(banner) > 0.6f) 0xFF55585F.toInt() else Color.WHITE
-                paint.textSize = bh * 0.62f
-                paint.isFakeBoldText = true
-                c.drawText(text, sleeve.left + bh * 0.4f, sleeve.top + bh * 0.76f, paint)
-                paint.isFakeBoldText = false
-            }
-            RectF(sleeve.left, sleeve.top + bh, sleeve.right, sleeve.bottom)
-        } else sleeve
-        art(c, cover, title, look, artRect, 0f)
-        gloss(c, sleeve, 0x40)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = w * 0.006f
-        paint.color = 0x33FFFFFF
-        c.drawRoundRect(body, r, r, paint)
-        paint.style = Paint.Style.FILL
-    }
 
     /** Cover art, center-cropped into [dst]; without art, the title on the system's colors. */
     private fun art(c: Canvas, cover: Bitmap?, title: String, look: Look, dst: RectF, radius: Float) {
@@ -205,115 +134,69 @@ internal object Render {
                 isFakeBoldText = true
             }
             val layout = StaticLayout.Builder.obtain(title, 0, title.length, text, (dst.width() * 0.84f).toInt())
-                .setAlignment(Layout.Alignment.ALIGN_CENTER).setMaxLines(5).build()
+                .setAlignment(Layout.Alignment.ALIGN_CENTER).setMaxLines(4).build()
             c.translate(dst.left + dst.width() * 0.08f, dst.centerY() - layout.height / 2f)
             layout.draw(c)
         }
         c.restore()
     }
 
-    private fun gloss(c: Canvas, r: RectF, alpha: Int) {
-        paint.shader = LinearGradient(r.left, r.top, r.left + r.width() * 0.7f, r.top + r.height() * 0.5f,
-            Color.argb(alpha, 255, 255, 255), 0, Shader.TileMode.CLAMP)
-        c.drawRect(r, paint)
-        paint.shader = null
+    /** [logo] fitted and centered in [box]. */
+    private fun logoIn(c: Canvas, logo: Bitmap?, box: RectF) {
+        logo ?: return
+        val scale = min(box.width() / logo.width, box.height() / logo.height)
+        val w = logo.width * scale
+        val h = logo.height * scale
+        c.drawBitmap(logo, null, RectF(box.centerX() - w / 2, box.centerY() - h / 2, box.centerX() + w / 2, box.centerY() + h / 2), paint)
     }
 
     /**
-     * A case's spine as it stands on a shelf: [w] wide, [h] tall. The system logo at the top, the
-     * game's logo running down (both fall back to text until downloaded), and for Wii the colored corner.
+     * The disc, cartridge or card, like the real ones: box art as the label and the system's logo
+     * on its band ([logo] should have dark lettering). [size] is its longest side.
      */
-    fun spine(look: Look, title: String, label: String, systemLogo: Bitmap?, gameLogo: Bitmap?, w: Int, h: Int): Bitmap {
-        val out = Bitmap.createBitmap(w.coerceAtLeast(2), h, Bitmap.Config.ARGB_8888)
-        val c = Canvas(out)
-        val bg = if (look.plastic) look.caseColor else darker(look.accent, 0.55f)
-        // Rounded plastic: lighter in the middle, darker at both edges.
-        paint.shader = LinearGradient(0f, 0f, w.toFloat(), 0f, intArrayOf(darker(bg, 0.7f), bg, bg, darker(bg, 0.62f)),
-            floatArrayOf(0f, 0.25f, 0.7f, 1f), Shader.TileMode.CLAMP)
-        c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
-        paint.shader = null
-        val logoLen = systemLogo?.let { min(w * 0.62f * it.width / it.height, h * 0.2f) } ?: 0f
-        val bannerLen = maxOf(h * 0.12f, logoLen + h * 0.04f)
-        look.banner?.takeIf { it != bg }?.let {
-            paint.color = it
-            c.drawRect(0f, 0f, w.toFloat(), bannerLen, paint)
-        }
-        if (look.cornerStripe) {
-            paint.color = stripeColors[(title.hashCode() and 0x7fffffff) % stripeColors.size]
-            c.drawPath(Path().apply { moveTo(0f, h.toFloat()); lineTo(w.toFloat(), h - w * 1.1f); lineTo(w.toFloat(), h.toFloat()); close() }, paint)
-        }
-        val ink = if (luma(look.banner ?: bg) > 0.55f) 0xFF4A4D55.toInt() else Color.WHITE
-        val titleInk = if (luma(bg) > 0.55f) 0xFF15161A.toInt() else Color.WHITE
-        val text = TextPaint(Paint.ANTI_ALIAS_FLAG)
-        // Everything reads top to bottom, like real spines: in this rotated canvas x runs down the
-        // spine and the spine's width is y from -w to 0.
-        c.save()
-        c.rotate(90f)
-        if (systemLogo != null) {
-            val across = logoLen * systemLogo.height / systemLogo.width
-            c.drawBitmap(systemLogo, null, RectF(h * 0.02f, -w / 2f - across / 2, h * 0.02f + logoLen, -w / 2f + across / 2), paint)
-        } else {
-            text.color = ink
-            text.textSize = w * 0.5f
-            text.isFakeBoldText = true
-            c.drawText(label, h * 0.025f, -w * 0.32f, text)
-        }
-        val start = bannerLen + h * 0.03f
-        val room = h * 0.84f - start
-        if (gameLogo != null) {
-            val along = min(room, w * 0.8f * gameLogo.width / gameLogo.height)
-            val across = along * gameLogo.height / gameLogo.width
-            c.drawBitmap(gameLogo, null, RectF(start, -w / 2f - across / 2, start + along, -w / 2f + across / 2), paint)
-        } else {
-            text.color = titleInk
-            text.textSize = w * 0.42f
-            text.isFakeBoldText = true
-            val shown = android.text.TextUtils.ellipsize(title.uppercase(), text, room, android.text.TextUtils.TruncateAt.END)
-            c.drawText(shown, 0, shown.length, start, -w * 0.34f, text)
-        }
-        c.restore()
-        return out
+    fun media(look: Look, cover: Bitmap?, title: String, logo: Bitmap?, size: Int): Bitmap = when (look.media) {
+        Look.Media.DISC, Look.Media.MINI_DISC -> disc(look, cover, title, logo, size)
+        Look.Media.UMD -> umd(look, cover, title, size)
+        Look.Media.CART -> cart(look, cover, title, logo, size, (size * 0.78f).toInt(), card = false)
+        Look.Media.CART_SMALL -> cart(look, cover, title, logo, (size * 0.9f).toInt(), size, card = false)
+        Look.Media.CARD -> cart(look, cover, title, logo, (size * 0.92f).toInt(), size, card = true)
     }
 
-    private val stripeColors = intArrayOf(0xFF2E9E4F.toInt(), 0xFFC8343C.toInt(), 0xFF2F7FD1.toInt(), 0xFFE5C21C.toInt(), 0xFF8C3E2E.toInt())
-
-    /** The disc, cartridge or card, with the cover art as its label. [size] is its longest side. */
-    fun media(look: Look, cover: Bitmap?, title: String, size: Int): Bitmap {
-        return when (look.media) {
-            Look.Media.DISC, Look.Media.MINI_DISC -> disc(look, cover, title, size)
-            Look.Media.UMD -> umd(look, cover, title, size)
-            Look.Media.CART -> cart(look, cover, title, (size * 0.95f).toInt(), (size * 0.75f).toInt(), grip = true)
-            Look.Media.CART_SMALL -> cart(look, cover, title, (size * 0.62f).toInt(), (size * 0.56f).toInt(), grip = true)
-            Look.Media.CARD -> cart(look, cover, title, (size * 0.5f).toInt(), (size * 0.58f).toInt(), grip = false)
-        }
-    }
-
-    private fun disc(look: Look, cover: Bitmap?, title: String, size: Int): Bitmap {
+    private fun disc(look: Look, cover: Bitmap?, title: String, logo: Bitmap?, size: Int): Bitmap {
         val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val c = Canvas(out)
         val cx = size / 2f
         val r = size / 2f
-        paint.shader = RadialGradient(cx, cx, r, intArrayOf(0xFFE8EBEF.toInt(), look.mediaColor, darker(look.mediaColor, 0.75f)),
-            floatArrayOf(0.2f, 0.75f, 1f), Shader.TileMode.CLAMP)
+        paint.shader = RadialGradient(cx, cx, r, intArrayOf(0xFFF2F4F7.toInt(), 0xFFC9CED6.toInt(), 0xFF9AA0AA.toInt()),
+            floatArrayOf(0.2f, 0.8f, 1f), Shader.TileMode.CLAMP)
         c.drawCircle(cx, cx, r, paint)
         paint.shader = null
-        // Label: the cover art printed on the disc, between hub and rim.
-        val label = Path().apply {
-            addCircle(cx, cx, r * 0.93f, Path.Direction.CW)
-            addCircle(cx, cx, r * 0.36f, Path.Direction.CCW)
+        val ring = Path().apply {
+            addCircle(cx, cx, r * 0.95f, Path.Direction.CW)
+            addCircle(cx, cx, r * 0.3f, Path.Direction.CCW)
         }
         c.save()
-        c.clipPath(label)
+        c.clipPath(ring)
         art(c, cover, title, look, RectF(0f, 0f, size.toFloat(), size.toFloat()), 0f)
+        // The printed band across the bottom with the system's logo, as on GameCube, Wii and PS2 discs.
+        val bandTop = cx + r * 0.42f
+        paint.color = look.mediaColor
+        c.drawRect(0f, bandTop, size.toFloat(), size.toFloat(), paint)
+        logoIn(c, logo, RectF(cx - r * 0.55f, bandTop + r * 0.06f, cx + r * 0.55f, bandTop + r * 0.3f))
         c.restore()
-        // Rainbow sheen and the clear hub.
-        paint.shader = SweepGradient(cx, cx, intArrayOf(0x00FFFFFF, 0x30FFFFFF, 0x00FFFFFF, 0x2000E5FF, 0x00FFFFFF, 0x30FFFFFF, 0x00FFFFFF), null)
+        // Rim, rainbow sheen, clear hub.
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = r * 0.04f
+        paint.color = 0xFFDDE1E6.toInt()
+        c.drawCircle(cx, cx, r * 0.96f, paint)
+        paint.style = Paint.Style.FILL
+        paint.shader = SweepGradient(cx, cx, intArrayOf(0x00FFFFFF, 0x38FFFFFF, 0x00FFFFFF, 0x2400E5FF, 0x00FFFFFF, 0x38FFFFFF, 0x00FFFFFF), null)
         c.drawCircle(cx, cx, r, paint)
         paint.shader = null
-        paint.color = 0xCCD9DDE3.toInt()
-        c.drawCircle(cx, cx, r * 0.33f, paint)
-        paint.color = 0x66FFFFFF
-        c.drawCircle(cx, cx, r * 0.2f, paint)
+        paint.color = 0xEEC5CAD1.toInt()
+        c.drawCircle(cx, cx, r * 0.3f, paint)
+        paint.color = 0xFF3A3D44.toInt()
+        c.drawCircle(cx, cx, r * 0.17f, paint)
         paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
         c.drawCircle(cx, cx, r * 0.1f, paint)
         paint.xfermode = null
@@ -342,90 +225,33 @@ internal object Render {
         return out
     }
 
-    private fun cart(look: Look, cover: Bitmap?, title: String, w: Int, h: Int, grip: Boolean): Bitmap {
+    /** Cartridge or card: white label strip with the system logo on top, box art below. */
+    private fun cart(look: Look, cover: Bitmap?, title: String, logo: Bitmap?, w: Int, h: Int, card: Boolean): Bitmap {
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(out)
         val r = min(w, h) * 0.06f
-        paint.shader = LinearGradient(0f, 0f, 0f, h.toFloat(), look.mediaColor, darker(look.mediaColor, 0.8f), Shader.TileMode.CLAMP)
-        c.drawRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), r, r, paint)
-        paint.shader = null
-        if (grip) {
-            paint.color = darker(look.mediaColor, 0.7f)
-            for (i in 0 until 5) {
-                val y = h * (0.05f + i * 0.035f)
-                c.drawRect(w * 0.12f, y, w * 0.88f, y + h * 0.012f, paint)
-            }
+        val body = Path().apply {
+            if (card) { // 3DS/DS/Switch cards have a cut corner
+                val cut = w * 0.1f
+                moveTo(r, 0f); lineTo(w - cut, 0f); lineTo(w.toFloat(), cut); lineTo(w.toFloat(), h - r)
+                quadTo(w.toFloat(), h.toFloat(), w - r, h.toFloat()); lineTo(r, h.toFloat())
+                quadTo(0f, h.toFloat(), 0f, h - r); lineTo(0f, r); quadTo(0f, 0f, r, 0f); close()
+            } else addRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), r, r, Path.Direction.CW)
         }
-        val labelTop = if (grip) h * 0.25f else h * 0.08f
-        art(c, cover, title, look, RectF(w * 0.1f, labelTop, w * 0.9f, h * 0.84f), r * 0.5f)
-        // Connector edge.
-        paint.color = if (grip) darker(look.mediaColor, 0.6f) else 0xFFC9A64A.toInt()
-        c.drawRect(w * 0.14f, h * 0.9f, w * 0.86f, h * 0.97f, paint)
+        paint.color = if (card) 0xFFF4F4F4.toInt() else look.mediaColor
+        c.drawPath(body, paint)
+        val inset = w * 0.06f
+        val strip = RectF(inset, inset, w - inset - (if (card) w * 0.06f else 0f), h * 0.2f)
+        paint.color = 0xFFFFFFFF.toInt()
+        c.drawRoundRect(strip, r * 0.4f, r * 0.4f, paint)
+        logoIn(c, logo, RectF(strip.left + strip.width() * 0.08f, strip.top + strip.height() * 0.15f, strip.right - strip.width() * 0.08f, strip.bottom - strip.height() * 0.15f))
+        art(c, cover, title, look, RectF(inset, h * 0.22f, w - inset, h - inset), r * 0.4f)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = w * 0.012f
+        paint.color = 0x33000000
+        c.drawPath(body, paint)
+        paint.style = Paint.Style.FILL
         return out
-    }
-
-    /**
-     * A stylized console filling [box]. Returns the slot line (left, y, right): media drops in there.
-     * [lit] 0..1 turns the power light on.
-     */
-    fun console(c: Canvas, look: Look, box: RectF, lit: Float): RectF {
-        val col = look.consoleColor
-        val shade = darker(col, 0.72f)
-        paint.shader = LinearGradient(0f, box.top, 0f, box.bottom, col, shade, Shader.TileMode.CLAMP)
-        val slot: RectF
-        when (look.console) {
-            Look.Console.CUBE -> {
-                val s = min(box.width(), box.height())
-                val body = RectF(box.centerX() - s / 2, box.bottom - s * 0.8f, box.centerX() + s / 2, box.bottom)
-                c.drawRoundRect(body, s * 0.08f, s * 0.08f, paint)
-                paint.shader = null
-                // Open lid, tilted back.
-                paint.color = darker(col, 0.85f)
-                c.drawPath(Path().apply {
-                    moveTo(body.left + s * 0.1f, body.top); lineTo(body.right - s * 0.1f, body.top)
-                    lineTo(body.right - s * 0.18f, body.top - s * 0.18f); lineTo(body.left + s * 0.18f, body.top - s * 0.18f); close()
-                }, paint)
-                slot = RectF(body.left + s * 0.18f, body.top + s * 0.02f, body.right - s * 0.18f, body.top + s * 0.02f)
-            }
-            Look.Console.SLIM, Look.Console.TOP_SLOT -> {
-                val h = box.width() * if (look.console == Look.Console.SLIM) 0.24f else 0.36f
-                val body = RectF(box.left, box.bottom - h, box.right, box.bottom)
-                c.drawRoundRect(body, h * 0.15f, h * 0.15f, paint)
-                paint.shader = null
-                paint.color = darker(col, 0.5f)
-                val slotW = box.width() * 0.5f
-                c.drawRoundRect(RectF(body.centerX() - slotW / 2, body.top + h * 0.12f, body.centerX() + slotW / 2, body.top + h * 0.2f),
-                    h * 0.04f, h * 0.04f, paint)
-                slot = RectF(body.centerX() - slotW / 2, body.top + h * 0.16f, body.centerX() + slotW / 2, body.top + h * 0.16f)
-            }
-            Look.Console.HANDHELD, Look.Console.TABLET -> {
-                val h = box.width() * 0.48f
-                val body = RectF(box.left, box.bottom - h, box.right, box.bottom)
-                c.drawRoundRect(body, h * 0.22f, h * 0.22f, paint)
-                paint.shader = null
-                if (look.console == Look.Console.TABLET) {
-                    paint.color = 0xFF00A6D6.toInt()
-                    c.drawRoundRect(RectF(body.left, body.top, body.left + h * 0.32f, body.bottom), h * 0.18f, h * 0.18f, paint)
-                    paint.color = 0xFFE4002B.toInt()
-                    c.drawRoundRect(RectF(body.right - h * 0.32f, body.top, body.right, body.bottom), h * 0.18f, h * 0.18f, paint)
-                }
-                paint.color = 0xFF0B0C0E.toInt()
-                val inset = h * if (look.console == Look.Console.TABLET) 0.38f else 0.3f
-                c.drawRoundRect(RectF(body.left + inset, body.top + h * 0.14f, body.right - inset, body.bottom - h * 0.14f), h * 0.04f, h * 0.04f, paint)
-                slot = RectF(body.centerX() - box.width() * 0.22f, body.top, body.centerX() + box.width() * 0.22f, body.top)
-            }
-        }
-        // Power light.
-        val ledX = box.right - box.width() * 0.08f
-        val ledY = box.bottom - box.width() * 0.05f
-        paint.color = darker(0xFF3BD16F.toInt(), 0.25f + 0.75f * lit)
-        c.drawCircle(ledX, ledY, box.width() * 0.012f, paint)
-        if (lit > 0f) {
-            paint.shader = RadialGradient(ledX, ledY, box.width() * 0.05f, Color.argb((120 * lit).toInt(), 59, 209, 111), 0, Shader.TileMode.CLAMP)
-            c.drawCircle(ledX, ledY, box.width() * 0.05f, paint)
-            paint.shader = null
-        }
-        return slot
     }
 
     fun darker(color: Int, f: Float) = Color.argb(Color.alpha(color), (Color.red(color) * f).toInt(), (Color.green(color) * f).toInt(), (Color.blue(color) * f).toInt())

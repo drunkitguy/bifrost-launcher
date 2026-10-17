@@ -20,7 +20,6 @@ internal object Library {
     class Shelf(val id: String, val title: String, val count: Int)
 
     const val APPS = "apps"
-    const val RECENT = "recent"
     private const val TREE = "rom_tree"
     private const val SHELF = "shelf"
 
@@ -31,11 +30,21 @@ internal object Library {
 
     val tree: Uri? get() = App.prefs.getString(TREE, null)?.let(Uri::parse)
 
-    /** Browse the discs and cartridges themselves instead of their cases. */
-    var mediaView: Boolean
-        get() = App.prefs.getBoolean("media_view", false)
+    enum class Sort(val label: String) { RECENT("Recent"), NAME("A–Z"), PLAYED("Most played") }
+
+    /** How a console's games are ordered (the sort pill). */
+    var sort: Sort
+        get() = runCatching { Sort.valueOf(App.prefs.getString("sort", null)!!) }.getOrDefault(Sort.RECENT)
         set(value) {
-            App.prefs.edit().putBoolean("media_view", value).apply()
+            App.prefs.edit().putString("sort", value.name).apply()
+            App.changed()
+        }
+
+    /** Games as a list of rows instead of a grid of discs and cartridges. */
+    var listView: Boolean
+        get() = App.prefs.getBoolean("list_view", false)
+        set(value) {
+            App.prefs.edit().putBoolean("list_view", value).apply()
             App.changed()
         }
 
@@ -54,12 +63,8 @@ internal object Library {
             App.main.post { App.changed() } // set from inside a refresh: don't recurse into it
         }
 
-    /** Recently played games, newest first. Same list instance until it changes. */
-    var recent: List<Game> = emptyList()
-        private set
-
     var selected: String
-        get() = App.prefs.getString(SHELF, null)?.takeIf { it == APPS || it in games || (it == RECENT && recent.isNotEmpty()) }
+        get() = App.prefs.getString(SHELF, null)?.takeIf { it == APPS || it in games }
             ?: shelves().first().id
         set(value) {
             App.prefs.edit().putString(SHELF, value).apply()
@@ -68,7 +73,6 @@ internal object Library {
 
     fun init(ctx: Context) {
         games = load(ctx)
-        updateRecent()
         rescan(ctx)
     }
 
@@ -78,26 +82,43 @@ internal object Library {
     }
 
     fun shelves(): List<Shelf> =
-        listOfNotNull(recent.takeIf { it.isNotEmpty() }?.let { Shelf(RECENT, title(RECENT), it.size) }) +
-            games.map { (id, list) -> Shelf(id, Systems.byName[id]?.fullname ?: id, list.size) }.sortedBy { it.title } +
+        games.map { (id, list) -> Shelf(id, Systems.byName[id]?.fullname ?: id, list.size) }.sortedBy { it.title } +
             Shelf(APPS, title(APPS), Apps.list.size)
 
     fun title(id: String) = when (id) {
         APPS -> "Android apps"
-        RECENT -> "Recently played"
         else -> Systems.byName[id]?.fullname ?: id
     }
 
-    fun tiles(): List<Tile> = selected.let { if (it == APPS) Apps.list else gamesOf(it) }
-
-    fun gamesOf(id: String): List<Game> = if (id == RECENT) recent else games[id].orEmpty()
+    /** A console's games in the chosen [sort] order. */
+    fun gamesOf(id: String): List<Game> = games[id].orEmpty().let { list ->
+        when (sort) {
+            Sort.NAME -> list
+            Sort.RECENT -> list.sortedWith(compareByDescending<Game> { lastPlayed(it) }.thenBy { it.label.lowercase() })
+            Sort.PLAYED -> list.sortedWith(compareByDescending<Game> { playTime(it) }.thenBy { it.label.lowercase() })
+        }
+    }
 
     // ── play sessions: like Cocoon, time from launch until Bifrost is back ──
 
     private const val PLAYING = "playing"
 
-    private fun startSession(game: Game) =
-        App.prefs.edit().putString(PLAYING, game.docId).putLong("$PLAYING.at", System.currentTimeMillis()).apply()
+    private fun startSession(game: Game, pkg: String) {
+        App.prefs.edit().putString(PLAYING, game.docId).putLong("$PLAYING.at", System.currentTimeMillis())
+            .putString("$PLAYING.pkg", pkg).apply()
+        App.changed()
+    }
+
+    /** The game started last, while it may still be running (Bifrost hasn't come back yet). */
+    fun nowPlaying(): Game? = App.prefs.getString(PLAYING, null)?.let { id -> games.values.flatten().firstOrNull { it.docId == id } }
+
+    fun sessionStart() = App.prefs.getLong("$PLAYING.at", 0L)
+
+    /** Closes the running emulator (root: AYN's service or su). Blocking; false if it couldn't. */
+    fun stopRunning(): Boolean {
+        val pkg = App.prefs.getString("$PLAYING.pkg", null)?.takeIf { it.matches(Regex("^[A-Za-z][\\w]*(\\.[\\w]+)+$")) } ?: return false
+        return Root.exec("am force-stop $pkg") != null
+    }
 
     /** Ends the running session, if any. Called whenever a Bifrost screen comes back. */
     fun endSession() {
@@ -106,18 +127,13 @@ internal object Library {
         App.prefs.edit()
             .putLong("time.$docId", App.prefs.getLong("time.$docId", 0L) + sessionLength(at, System.currentTimeMillis()))
             .putLong("last.$docId", at)
-            .remove(PLAYING).remove("$PLAYING.at")
+            .remove(PLAYING).remove("$PLAYING.at").remove("$PLAYING.pkg")
             .apply()
-        updateRecent()
         App.changed()
     }
 
     fun playTime(game: Game) = App.prefs.getLong("time.${game.docId}", 0L)
     fun lastPlayed(game: Game) = App.prefs.getLong("last.${game.docId}", 0L)
-
-    private fun updateRecent() {
-        recent = games.values.flatten().filter { lastPlayed(it) > 0 }.sortedByDescending { lastPlayed(it) }.take(15)
-    }
 
     /** L1/R1: previous/next shelf. */
     fun cycle(step: Int) {
@@ -137,7 +153,6 @@ internal object Library {
                 if (found != null) {
                     games = found
                     save(app, found)
-                    updateRecent()
                 }
                 App.changed()
             }
@@ -282,7 +297,7 @@ internal object Library {
             } catch (e: SecurityException) {
                 ctx.startActivity(intent) // display refused: let Android pick
             }
-            startSession(game)
+            startSession(game, intent.component?.packageName.orEmpty())
         } catch (e: Exception) {
             Toast.makeText(ctx, "${command.label} couldn't start: ${e.message}", Toast.LENGTH_LONG).show()
         }

@@ -28,7 +28,7 @@ internal class Theme(
 ) {
     companion object {
         val builtIn = listOf(
-            Theme("Midnight", 0xFF0E1116.toInt(), 0xFF1A1F27.toInt(), 0xFF7AA2FF.toInt(), 0xFFE8EAED.toInt(), 0xFF9AA0A6.toInt()),
+            Theme("Midnight", 0xFF0E1116.toInt(), 0xFF1A1F27.toInt(), 0xFF55B8FF.toInt(), 0xFFE8EAED.toInt(), 0xFF9AA0A6.toInt()),
             Theme("Snow", 0xFFE9ECF0.toInt(), 0xFFFFFFFF.toInt(), 0xFF2FA4E7.toInt(), 0xFF1E2228.toInt(), 0xFF6B7280.toInt(), light = true),
             Theme("Neon", 0xFF2D2D2D.toInt(), 0xFF3A3A3A.toInt(), 0xFF00C3E3.toInt(), 0xFFFFFFFF.toInt(), 0xFFA8A8A8.toInt()),
             Theme("Crimson", 0xFF16080B.toInt(), 0xFF2A1015.toInt(), 0xFFE60012.toInt(), 0xFFF3E9EA.toInt(), 0xFFA88E92.toInt()),

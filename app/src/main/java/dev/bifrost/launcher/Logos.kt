@@ -57,23 +57,48 @@ internal object Logos {
         return null
     }
 
-    private fun svgFile(ctx: Context, folder: String, kind: Kind): File {
-        val file = File(ctx.filesDir, "logos/$folder-${kind.file}")
-        if (!file.exists()) {
-            val c = URL("$BASE$folder/images/${kind.file}").openConnection() as HttpURLConnection
-            c.connectTimeout = 15_000
-            c.readTimeout = 30_000
-            try {
-                check(c.responseCode == 200) { "HTTP ${c.responseCode}" }
-                file.parentFile?.mkdirs()
-                val tmp = File(file.path + ".part")
-                c.inputStream.use { input -> tmp.outputStream().use { input.copyTo(it) } }
-                tmp.renameTo(file)
-            } finally {
-                c.disconnect()
+    private val years = HashMap<String, String?>()
+
+    /** The console's release year, from the theme's system info; null until downloaded. */
+    fun year(ctx: Context, system: String, onReady: () -> Unit = {}): String? {
+        val folder = folder(system)
+        if (folder in years) return years[folder]
+        if (!pending.add("year/$folder")) return null
+        val app = ctx.applicationContext
+        Images.pool.execute {
+            val year = runCatching {
+                val file = File(app.filesDir, "logos/$folder-systeminfo.xml")
+                if (!file.exists()) download("$BASE$folder/systeminfo.xml", file)
+                releaseYear(file.readText())
+            }.getOrNull()
+            App.main.post {
+                pending.remove("year/$folder")
+                years[folder] = year
+                if (year != null) onReady()
             }
         }
+        return null
+    }
+
+    private fun svgFile(ctx: Context, folder: String, kind: Kind): File {
+        val file = File(ctx.filesDir, "logos/$folder-${kind.file}")
+        if (!file.exists()) download("$BASE$folder/images/${kind.file}", file)
         return file
+    }
+
+    private fun download(url: String, file: File) {
+        val c = URL(url).openConnection() as HttpURLConnection
+        c.connectTimeout = 15_000
+        c.readTimeout = 30_000
+        try {
+            check(c.responseCode == 200) { "HTTP ${c.responseCode}" }
+            file.parentFile?.mkdirs()
+            val tmp = File(file.path + ".part")
+            c.inputStream.use { input -> tmp.outputStream().use { input.copyTo(it) } }
+            tmp.renameTo(file)
+        } finally {
+            c.disconnect()
+        }
     }
 
     private fun render(file: File, kind: Kind, h: Int, onDark: Boolean): Bitmap {
@@ -95,6 +120,9 @@ internal object Logos {
         return bitmap
     }
 }
+
+/** "Released:  2001" in an ES-DE theme's systeminfo.xml. */
+internal fun releaseYear(systemInfo: String): String? = Regex("Released:\\s*(\\d{4})").find(systemInfo)?.groupValues?.get(1)
 
 /** Near-black pixels become white (same alpha): black lettering on a logo, readable on dark. */
 internal fun lightenDark(argb: Int): Int {

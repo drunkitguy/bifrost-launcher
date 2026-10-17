@@ -175,4 +175,10 @@ class FrontendTest {
         assertEquals("1998", yearIn("Sonic Adventure is a 1998 platform game"))
         assertNull(yearIn("platform game"))
     }
+
+    @Test
+    fun consoleYearFromThemeInfo() {
+        assertEquals("2001", releaseYear("<text>Manufacturer:  Nintendo</text>\n<text>Released:  2001</text>"))
+        assertNull(releaseYear("<text>Manufacturer:  Nintendo</text>"))
+    }
 }

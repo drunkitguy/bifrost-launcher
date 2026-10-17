@@ -1,16 +1,15 @@
 # Bifrost Launcher
 
-A dual-screen, dock-aware game frontend and home screen for the AYN Thor.
+A dual-screen, dock-aware game frontend and home screen for the AYN Thor, laid out like Cocoon.
 
-| Mode | Top screen | Bottom screen | External display |
-|------|-----------|---------------|------------------|
-| Handheld | Home row of consoles, then that console's games on a shelf | Details of what's highlighted, Play button, dock | n/a |
-| Docked | Off | Off | Everything: home row or shelf, details, dock |
+| Mode | Top screen | Bottom screen |
+|------|-----------|---------------|
+| Handheld | Full-bleed art: the console's scene on its color, or the game's fan art / title screen with its logo. Status pills, play time, info | Black grid: consoles (console, logo, year), then a console's games as their discs or cartridges. Header with back, sort and list toggle |
+| Docked | Off | Off |
 
-Inspired by the Thor frontends people already love: a home row of big console tiles and a
-button-hint bar like Konsoru and iiSU, an info screen that follows the cursor with a big Play
-button, icon status (Wi-Fi, battery, time), an icon dock, and play time with a Recently played
-row like Cocoon.
+**Docked, one screen made for the TV** instead of the two screens pasted together: the art fills
+the whole display, the game's logo, play time and year sit top-left, the status pills top-right,
+and the consoles or games run in a single row along the bottom.
 
 ## Game library
 
@@ -18,49 +17,20 @@ row like Cocoon.
 2. Put each console's games in a subfolder named like ES-DE (`gc`, `wii`, `n3ds`, `switch`, `ps2`,
    `psx`, `psp`, `nds`, `n64`, `dreamcast`, `gba`, `snes`, ...) or by full name
    (`Nintendo GameCube`). An existing ES-DE ROMs folder works as is.
-3. Consoles with games show up on the bottom screen. Pick one and its games fill the top screen.
+3. Consoles with games show up on the bottom screen. Open one to see its games as discs or
+   cartridges; the top screen shows the art of whatever is selected.
 
 Every system and emulator ES-DE supports on Android works (about 190 systems), including Dolphin
 (GameCube, Wii), Azahar (3DS), Eden and Eden Nightly (Switch), NetherSX2, DuckStation, PPSSPP, melonDS, Vita3K, Flycast and RetroArch cores.
 Bifrost lends the emulator read access to the game when it starts it, so most standalone
 emulators need no folder setup of their own.
 
-### The shelf
-
-Games stand spine-out on a shelf, like a real collection: Wii cases are white with the colored
-corner, PS2 black, Switch red, N64 and SNES boxes cardboard, and so on. The selected game slides
-out and turns to show its cover.
-
-Starting a game plays the insert: the case opens, the disc, cartridge or card slides out and drops
-into the console. On the Thor the case is on the top screen and the console on the bottom one, so
-the disc falls from one screen into the other. Docked, it all plays on the TV.
-
-**Select** (or a game's long-press menu, or settings) switches the shelf between the cases and the
-discs and cartridges themselves.
-
-Logos instead of labels: consoles on the bottom screen show their console art and logo, spines
-carry the system logo and the game's own logo, and the header shows logos too. System logos and
-console art come from ES-DE's [Slate theme](https://gitlab.com/es-de/themes/slate-es-de)
-(CC BY-NC-SA) and game logos from libretro-thumbnails, all downloaded on first use; nothing
-trademarked ships in the APK. Cases and discs are drawn from the box art.
-
-### Console menus
-
-Some consoles open into their own menu instead of the shelf:
-
-| Console | Menu |
-|---|---|
-| Wii, Wii U | Channel grid, 12 a page, with the curved bar, Wii button, clock and mail |
-| PSP, PS3 | XMB: month-colored background with drifting waves, category icons, vertical game list |
-| Switch | HOME row of square tiles, pulsing cyan border, round shortcut icons |
-| 3DS, DS | HOME menu: the game's logo on the top screen, the icon row with its name bubble and Open bar on the bottom screen (both halves on one screen when docked) |
-
-Long-press a console on the home row to switch it between its menu and the shelf.
-
 ### Game info
 
 Highlighting a game looks up its release year and description on Wikipedia (once, then kept on
-the device) and shows them on the details screen with the emulator, last played and play time.
+the device). **Y** (or the ⓘ button) shows them over the art with the emulator, last played and
+play time. Play time is tracked from launch until you're back in Bifrost; while a game runs, the
+bottom screen shows it with a Stop button (closing a game needs root, which a stock Thor has).
 
 ### Themes
 
@@ -86,28 +56,30 @@ and optionally that wallpaper image.
 
 ### Artwork
 
-- **Download missing artwork** in settings fetches box art for every game from the
+- **Download missing artwork** in settings fetches box art, game logos and title screens from the
   [libretro thumbnail server](https://thumbnails.libretro.com) (no account needed).
+- With a free [SteamGridDB](https://www.steamgriddb.com) API key (settings) it also fetches wide
+  fan art for the top screen, like Cocoon's. Switch games get theirs from there too.
 - Long-press a game for **Download artwork**, **Set artwork...** (any image) or **Remove artwork**.
 - Long-press a console to give it its own artwork.
 - Switch and other systems without libretro thumbnails need custom artwork.
 
 ### Controller
 
-- **Left / right**: along the shelf, **L2 / R2**: jump 10 games
-- **A**: open the console / play, **B**: back to the home row, **X / Y**: options
-- **L1 / R1**: previous / next console, **Select**: cases / discs, **Start**: settings
-- Touch: swipe the shelf, tap a spine to pull it out, tap the cover to play.
+- **D-pad**: move, **A**: open / play, **B**: back, **X**: options, **Y**: game info
+- **L1 / R1**: previous / next console, **Select**: grid / list, **Start**: settings
+- Touch: tap to select, tap again to open, long-press for options; the sort pill cycles
+  Recent / A–Z / Most played.
 
 ## Docked mode
 
 Plugging in a USB-C/HDMI dock (or casting to a wireless display) switches modes automatically:
 
-1. The dock screen opens on the external display and takes controller input.
+1. The single-screen layout opens on the external display and takes controller input.
 2. Both built-in screens go black, stop taking input, and hide their system bars.
 3. If root is available, both built-in panels are also powered off (see below).
-4. Apps launched from the dock open on the external display.
-5. Pressing Home brings the dock screen back to the front of the external display.
+4. Games and apps launched while docked open on the external display.
+5. Pressing Home brings Bifrost back to the front of the external display.
 
 Unplugging closes the dock screen and brings both built-in screens back.
 
