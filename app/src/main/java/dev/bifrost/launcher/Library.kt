@@ -20,6 +20,7 @@ internal object Library {
     class Shelf(val id: String, val title: String, val count: Int)
 
     const val APPS = "apps"
+    const val RECENT = "recent"
     private const val TREE = "rom_tree"
     private const val SHELF = "shelf"
 
@@ -38,8 +39,28 @@ internal object Library {
             App.changed()
         }
 
+    /** Inside a console's shelf (true) or on the home row of consoles (false). Back goes up. */
+    var inside = false
+        set(value) {
+            field = value
+            App.changed()
+        }
+
+    /** The game under the cursor, for the details on the other screen. */
+    var highlight: Game? = null
+        set(value) {
+            if (value === field) return
+            field = value
+            App.main.post { App.changed() } // set from inside a refresh: don't recurse into it
+        }
+
+    /** Recently played games, newest first. Same list instance until it changes. */
+    var recent: List<Game> = emptyList()
+        private set
+
     var selected: String
-        get() = App.prefs.getString(SHELF, null)?.takeIf { it == APPS || it in games } ?: shelves().first().id
+        get() = App.prefs.getString(SHELF, null)?.takeIf { it == APPS || it in games || (it == RECENT && recent.isNotEmpty()) }
+            ?: shelves().first().id
         set(value) {
             App.prefs.edit().putString(SHELF, value).apply()
             App.changed()
@@ -47,6 +68,7 @@ internal object Library {
 
     fun init(ctx: Context) {
         games = load(ctx)
+        updateRecent()
         rescan(ctx)
     }
 
@@ -56,12 +78,46 @@ internal object Library {
     }
 
     fun shelves(): List<Shelf> =
-        games.map { (id, list) -> Shelf(id, Systems.byName[id]?.fullname ?: id, list.size) }.sortedBy { it.title } +
-            Shelf(APPS, "Android apps", Apps.list.size)
+        listOfNotNull(recent.takeIf { it.isNotEmpty() }?.let { Shelf(RECENT, title(RECENT), it.size) }) +
+            games.map { (id, list) -> Shelf(id, Systems.byName[id]?.fullname ?: id, list.size) }.sortedBy { it.title } +
+            Shelf(APPS, title(APPS), Apps.list.size)
 
-    fun title(id: String) = if (id == APPS) "Android apps" else Systems.byName[id]?.fullname ?: id
+    fun title(id: String) = when (id) {
+        APPS -> "Android apps"
+        RECENT -> "Recently played"
+        else -> Systems.byName[id]?.fullname ?: id
+    }
 
-    fun tiles(): List<Tile> = selected.let { if (it == APPS) Apps.list else games[it].orEmpty() }
+    fun tiles(): List<Tile> = selected.let { if (it == APPS) Apps.list else gamesOf(it) }
+
+    fun gamesOf(id: String): List<Game> = if (id == RECENT) recent else games[id].orEmpty()
+
+    // ── play sessions: like Cocoon, time from launch until Bifrost is back ──
+
+    private const val PLAYING = "playing"
+
+    private fun startSession(game: Game) =
+        App.prefs.edit().putString(PLAYING, game.docId).putLong("$PLAYING.at", System.currentTimeMillis()).apply()
+
+    /** Ends the running session, if any. Called whenever a Bifrost screen comes back. */
+    fun endSession() {
+        val docId = App.prefs.getString(PLAYING, null) ?: return
+        val at = App.prefs.getLong("$PLAYING.at", 0L)
+        App.prefs.edit()
+            .putLong("time.$docId", App.prefs.getLong("time.$docId", 0L) + sessionLength(at, System.currentTimeMillis()))
+            .putLong("last.$docId", at)
+            .remove(PLAYING).remove("$PLAYING.at")
+            .apply()
+        updateRecent()
+        App.changed()
+    }
+
+    fun playTime(game: Game) = App.prefs.getLong("time.${game.docId}", 0L)
+    fun lastPlayed(game: Game) = App.prefs.getLong("last.${game.docId}", 0L)
+
+    private fun updateRecent() {
+        recent = games.values.flatten().filter { lastPlayed(it) > 0 }.sortedByDescending { lastPlayed(it) }.take(15)
+    }
 
     /** L1/R1: previous/next shelf. */
     fun cycle(step: Int) {
@@ -81,6 +137,7 @@ internal object Library {
                 if (found != null) {
                     games = found
                     save(app, found)
+                    updateRecent()
                 }
                 App.changed()
             }
@@ -220,12 +277,38 @@ internal object Library {
             }
         }
         try {
-            ctx.startActivity(intent, ActivityOptions.makeBasic().setLaunchDisplayId(displayId).toBundle())
-        } catch (e: SecurityException) {
-            runCatching { ctx.startActivity(intent) }
+            try {
+                ctx.startActivity(intent, ActivityOptions.makeBasic().setLaunchDisplayId(displayId).toBundle())
+            } catch (e: SecurityException) {
+                ctx.startActivity(intent) // display refused: let Android pick
+            }
+            startSession(game)
         } catch (e: Exception) {
             Toast.makeText(ctx, "${command.label} couldn't start: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+}
+
+/** One session's length: never negative, at most 12 hours (a game left open overnight). */
+internal fun sessionLength(start: Long, end: Long) = (end - start).coerceIn(0L, 12 * 3_600_000L)
+
+/** "3h 20m", "45m", "Under a minute". */
+internal fun playTimeText(ms: Long): String {
+    val minutes = ms / 60_000
+    return when {
+        minutes < 1 -> "Under a minute"
+        minutes < 60 -> "${minutes}m"
+        else -> "${minutes / 60}h ${minutes % 60}m"
+    }
+}
+
+/** "Today", "Yesterday", "3 days ago". */
+internal fun agoText(then: Long, now: Long): String {
+    val days = ((now - then) / 86_400_000L).coerceAtLeast(0)
+    return when (days) {
+        0L -> "Today"
+        1L -> "Yesterday"
+        else -> "$days days ago"
     }
 }
 

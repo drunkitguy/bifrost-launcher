@@ -4,8 +4,13 @@ A dual-screen, dock-aware game frontend and home screen for the AYN Thor.
 
 | Mode | Top screen | Bottom screen | External display |
 |------|-----------|---------------|------------------|
-| Handheld | The selected console's games, spine-out on a shelf | Consoles (GameCube, Wii, 3DS, ...), Android apps, clock and status | n/a |
-| Docked | Off | Off | Everything: consoles, games, clock, status |
+| Handheld | Home row of consoles, then that console's games on a shelf | Details of what's highlighted, Play button, dock | n/a |
+| Docked | Off | Off | Everything: home row or shelf, details, dock |
+
+Inspired by the Thor frontends people already love: a home row of big console tiles and a
+button-hint bar like Konsoru and iiSU, an info screen that follows the cursor with a big Play
+button, icon status (Wi-Fi, battery, time), an icon dock, and play time with a Recently played
+row like Cocoon.
 
 ## Game library
 
@@ -60,7 +65,8 @@ trademarked ships in the APK. Cases and discs are drawn from the box art.
 ### Controller
 
 - **Left / right**: along the shelf, **L2 / R2**: jump 10 games
-- **A**: play, **X / Y**: menu, **L1 / R1**: previous / next console, **Select**: cases / discs, **Start**: settings
+- **A**: open the console / play, **B**: back to the home row, **X / Y**: options
+- **L1 / R1**: previous / next console, **Select**: cases / discs, **Start**: settings
 - Touch: swipe the shelf, tap a spine to pull it out, tap the cover to play.
 
 ## Docked mode

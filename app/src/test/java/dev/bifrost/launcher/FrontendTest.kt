@@ -142,4 +142,17 @@ class FrontendTest {
         assertEquals(60, consoleEnd(opaque))
         assertNull(consoleEnd(BooleanArray(100) { true }))
     }
+
+    @Test
+    fun playTimeAndLastPlayedRead() {
+        assertEquals("Under a minute", playTimeText(30_000))
+        assertEquals("45m", playTimeText(45 * 60_000L))
+        assertEquals("3h 20m", playTimeText((3 * 60 + 20) * 60_000L))
+        val day = 86_400_000L
+        assertEquals("Today", agoText(10 * day, 10 * day + 5_000))
+        assertEquals("Yesterday", agoText(10 * day, 11 * day + 5_000))
+        assertEquals("3 days ago", agoText(10 * day, 13 * day))
+        assertEquals(0L, sessionLength(100, 50)) // clock went backwards
+        assertEquals(12 * 3_600_000L, sessionLength(0, 48 * 3_600_000L)) // left running overnight
+    }
 }

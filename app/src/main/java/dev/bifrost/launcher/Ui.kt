@@ -190,37 +190,3 @@ internal class TileAdapter(private val ctx: Context) : BaseAdapter() {
         return tile
     }
 }
-
-/** The consoles (and Android apps) the library holds: console art and logo, no labels. */
-internal class ShelfAdapter(private val ctx: Context) : BaseAdapter() {
-    var shelves: List<Library.Shelf> = emptyList()
-    var onArt: () -> Unit = {}
-
-    override fun getCount() = shelves.size
-    override fun getItem(position: Int) = shelves[position]
-    override fun getItemId(position: Int) = position.toLong()
-
-    override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-        val card = convertView as? LinearLayout ?: LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(ctx.dp(12), ctx.dp(12), ctx.dp(12), ctx.dp(10))
-            addView(ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_CENTER },
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(84)))
-            addView(LogoLabel(ctx, 16f, Ui.TEXT, bold = true, logoHeightPx = ctx.dp(24)),
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                    .apply { topMargin = ctx.dp(8) })
-        }
-        val shelf = shelves[position]
-        val image = card.getChildAt(0) as ImageView
-        // Your own console artwork wins over the downloaded one.
-        val custom = Art.system(ctx, shelf.id)
-        if (custom.exists()) Images.load(image, custom, ctx.dp(200), null)
-        else image.setImageBitmap(Logos.get(ctx, shelf.id, Logos.Kind.SCENE, ctx.dp(84), onReady = onArt))
-        (card.getChildAt(1) as LogoLabel).show(shelf.title, Logos.get(ctx, shelf.id, Logos.Kind.LOGO, ctx.dp(24), onReady = onArt))
-        card.contentDescription = "${shelf.title}, ${shelf.count}"
-        val selected = shelf.id == Library.selected
-        card.background = ctx.rounded(if (selected) 0x337AA2FF else Ui.SURFACE, if (selected) Ui.ACCENT else Ui.SURFACE)
-        return card
-    }
-}

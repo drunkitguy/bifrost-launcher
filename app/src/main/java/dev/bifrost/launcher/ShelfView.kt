@@ -36,7 +36,6 @@ internal class ShelfView(context: Context) : View(context) {
             if (value === field) return
             field = value
             look = Look.of(value.firstOrNull()?.system.orEmpty())
-            label = spineLabel(value.firstOrNull()?.system.orEmpty())
             index = 0
             scroll = 0f
             pull.clear()
@@ -55,7 +54,6 @@ internal class ShelfView(context: Context) : View(context) {
         }
 
     private var look = Look.of("")
-    private var label = ""
     private var index = 0
     private var scroll = 0f
     /** How far each case is pulled out, 0 (on the shelf) to 1. Only cases not at rest are listed. */
@@ -97,6 +95,7 @@ internal class ShelfView(context: Context) : View(context) {
         val next = i.coerceIn(0, (games.size - 1).coerceAtLeast(0))
         if (next == index || games.isEmpty()) return
         pull[index] = pull[index] ?: 1f
+        playSoundEffect(if (next < index) android.view.SoundEffectConstants.NAVIGATION_LEFT else android.view.SoundEffectConstants.NAVIGATION_RIGHT)
         index = next
         pull[index] = pull[index] ?: 0f
         onSelect(games[index])
@@ -215,6 +214,7 @@ internal class ShelfView(context: Context) : View(context) {
 
     private fun drawCase(canvas: Canvas, i: Int, p: Float) {
         val game = games[i]
+        val look = Look.of(game.system) // Recently played mixes consoles
         val theta = 90f - 66f * p
         val x = (i - scroll) * spacing
         val z = caseW / 2f - p * caseW * 0.85f
@@ -222,7 +222,7 @@ internal class ShelfView(context: Context) : View(context) {
         // Once it turns, the box takes the cover art's shape (N64 and SNES boxes are landscape).
         val cover = if (p > 0.02f) Faces.cover(context, game, look, (caseH * 1.25f).toInt()) { invalidate() } else null
         val w = cover?.let { caseH * it.width / it.height } ?: caseW
-        val faces = Box.project(w, caseH, depth, x, y, z, theta, focal, cx, cy)
+        val faces = Box.project(w, caseH, caseW * look.depth, x, y, z, theta, focal, cx, cy)
 
         if (p > 0.05f) {
             // Soft shadow on the plank under the pulled-out case.
@@ -233,7 +233,7 @@ internal class ShelfView(context: Context) : View(context) {
             paint.shader = null
         }
         faces.spine?.let { quad ->
-            draw(canvas, Faces.spine(context, game, look, label, depth.toInt(), caseH.toInt()) { invalidate() }, quad,
+            draw(canvas, Faces.spine(context, game, look, spineLabel(game.system), (caseW * look.depth).toInt(), caseH.toInt()) { invalidate() }, quad,
                 light(sin(Math.toRadians(theta.toDouble())).toFloat()))
         }
         if (cover != null) faces.cover?.let { quad ->
@@ -254,7 +254,7 @@ internal class ShelfView(context: Context) : View(context) {
         val last = (scroll.toInt() + visible).coerceAtMost(games.size - 1)
         for (i in (first..last).sortedBy { pull[it] ?: 0f }) {
             val p = pull[i] ?: 0f
-            val bitmap = Faces.media(context, games[i], look, size.toInt()) { invalidate() }
+            val bitmap = Faces.media(context, games[i], Look.of(games[i].system), size.toInt()) { invalidate() }
             val scale = (0.66f + 0.34f * p) * size / maxOf(bitmap.width, bitmap.height)
             val w = bitmap.width * scale
             val h = bitmap.height * scale
